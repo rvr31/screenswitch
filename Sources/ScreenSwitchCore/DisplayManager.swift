@@ -26,13 +26,12 @@ public final class DisplayManager {
         virtuals.compactMapValues { if case .mirrored(_, let size) = $0 { size } else { nil } }
     }
 
-    /// The state of every connected display: online ones and the ones turned
-    /// off here. Entries remembered without a key are left out.
+    /// The state of every connected display: online ones and the ones turned off here.
     public var current: [DisplayKey: DisplayTarget] {
         let online = online.map { display in
             (display.key, virtualSizes[display.id].map(DisplayTarget.virtual) ?? .native)
         }
-        let off = turnedOff.compactMap { remembered in remembered.key.map { ($0, DisplayTarget.off) } }
+        let off = turnedOff.map { ($0.key, DisplayTarget.off) }
         return Dictionary(online + off, uniquingKeysWith: { first, _ in first })
     }
 

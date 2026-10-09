@@ -65,6 +65,21 @@ public struct PhysicalDisplay: Equatable, Sendable {
 public struct RememberedOff: Codable, Equatable, Sendable {
     public let id: CGDirectDisplayID
     public let name: String
-    /// Nil for displays remembered before profiles existed.
-    public let key: DisplayKey?
+    public let key: DisplayKey
+
+    public init(id: CGDirectDisplayID, name: String, key: DisplayKey) {
+        self.id = id
+        self.name = name
+        self.key = key
+    }
+
+    /// Entries saved before profiles existed have no key. A disabled display
+    /// still reports its vendor, model and serial (measured on macOS 26), so
+    /// the key comes from the remembered ID.
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(CGDirectDisplayID.self, forKey: .id)
+        name = try container.decode(String.self, forKey: .name)
+        key = try container.decodeIfPresent(DisplayKey.self, forKey: .key) ?? DisplayKey(id)
+    }
 }

@@ -33,8 +33,8 @@ private func display(_ width: Int, _ height: Int, pixels: (Int, Int)) -> Physica
     #expect(sizes.first == DisplaySize(width: 1512, height: 982))
 }
 
-@Test func rememberedOffSavedBeforeProfilesStillDecodes() throws {
+@Test func rememberedOffSavedBeforeProfilesTakesItsKeyFromTheDisplayID() throws {
     let saved = #"[{"name":"Built-in Retina Display","id":1}]"#.data(using: .utf8)!
     let decoded = try JSONDecoder().decode([RememberedOff].self, from: saved)
-    #expect(decoded == [RememberedOff(id: 1, name: "Built-in Retina Display", key: nil)])
+    #expect(decoded == [RememberedOff(id: 1, name: "Built-in Retina Display", key: DisplayKey(1))])
 }
