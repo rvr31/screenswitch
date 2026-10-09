@@ -23,13 +23,9 @@ macOS has no switch for a connected display. You unplug it or close the lid. And
 
 1. Download `ScreenSwitch-<version>.zip` from the [latest release](https://github.com/rvr31/screenswitch/releases/latest).
 2. Unzip it and move `ScreenSwitch.app` to `/Applications`.
-3. The app is signed ad hoc and not notarized, so Gatekeeper blocks the first launch. Remove the quarantine flag once:
+3. Open `ScreenSwitch.app`.
 
-```sh
-xattr -dr com.apple.quarantine /Applications/ScreenSwitch.app
-```
-
-Then open the app. It runs on macOS 14 or later, on Apple silicon and Intel.
+Releases are signed with a Developer ID and notarized by Apple. The app runs on macOS 14 or later, on Apple silicon and Intel.
 
 Choose "Open at Login" from the copy in `/Applications`. The login item points at the app the menu runs from.
 
