@@ -3,6 +3,7 @@
 # Screens go dark and flicker while it runs. Whatever fails, the exit trap
 # turns both displays back on and drops the virtual display.
 # Usage: scripts/verify-displays.sh [EXTERNAL_ID] [BUILTIN_ID]
+# SCALE_ONLY=1 skips the off/on steps and only runs the virtual-scaling pass.
 set -eu
 cd "$(dirname "$0")/.."
 EXTERNAL=${1:-4}
@@ -51,17 +52,21 @@ step() {
     observe "after"
 }
 
-step "turn off $EXTERNAL" off "$EXTERNAL"
-step "turn on $EXTERNAL" on "$EXTERNAL"
-step "turn off $BUILTIN" off "$BUILTIN"
-step "turn on $BUILTIN" on "$BUILTIN"
+if [ -z "${SCALE_ONLY:-}" ]; then
+    step "turn off $EXTERNAL" off "$EXTERNAL"
+    step "turn on $EXTERNAL" on "$EXTERNAL"
+    step "turn off $BUILTIN" off "$BUILTIN"
+    step "turn on $BUILTIN" on "$BUILTIN"
+fi
 
-echo "== virtual on $EXTERNAL: 2304x1440, resize to 1920x1200, native, 2304x1440 again, native"
+SIZE_A=$("$CLI" sizes "$EXTERNAL" | sed -n 2p)
+SIZE_B=$("$CLI" sizes "$EXTERNAL" | sed -n 4p)
+echo "== virtual on $EXTERNAL: $SIZE_A, resize to $SIZE_B, native, $SIZE_A again, native"
 observe "before"
-"$CLI" scale "$EXTERNAL" 2304x1440 wait 3 status \
-    scale "$EXTERNAL" 1920x1200 wait 3 status \
+"$CLI" scale "$EXTERNAL" "$SIZE_A" wait 3 status \
+    scale "$EXTERNAL" "$SIZE_B" wait 3 status \
     native "$EXTERNAL" wait 3 status \
-    scale "$EXTERNAL" 2304x1440 wait 3 status \
+    scale "$EXTERNAL" "$SIZE_A" wait 3 status \
     native "$EXTERNAL" &
 SCALER=$!
 wait "$SCALER"

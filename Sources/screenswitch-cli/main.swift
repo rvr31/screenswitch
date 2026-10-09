@@ -56,7 +56,7 @@ func outline(_ entries: [MenuEntry], depth: Int = 1) -> [String] {
     }
 }
 
-let arity = ["off": 1, "on": 1, "scale": 2, "native": 1, "wait": 1]
+let arity = ["off": 1, "on": 1, "scale": 2, "native": 1, "wait": 1, "sizes": 1]
 
 /// Returns false when the command or its operands are not understood.
 @MainActor func execute(_ command: String, _ operands: [String], on manager: DisplayManager) throws(DisplayError) -> Bool {
@@ -67,6 +67,9 @@ let arity = ["off": 1, "on": 1, "scale": 2, "native": 1, "wait": 1]
     case ("off", let id?): try manager.turnOff(id)
     case ("on", let id?): try manager.turnOn(id)
     case ("native", let id?): try manager.setNative(id)
+    case ("sizes", let id?):
+        guard let display = manager.display(id) else { throw .unknownDisplay(id) }
+        for size in display.scaledSizes { print("\(size.width)x\(size.height)") }
     case ("scale", let id?):
         let parts = operands[1].split(separator: "x").compactMap { Int($0) }
         guard parts.count == 2 else { return false }

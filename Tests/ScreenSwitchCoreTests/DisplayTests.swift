@@ -1,28 +1,33 @@
 import Testing
 @testable import ScreenSwitchCore
 
-private func display(_ width: Int, _ height: Int) -> PhysicalDisplay {
+private func display(_ width: Int, _ height: Int, pixels: (Int, Int)) -> PhysicalDisplay {
     PhysicalDisplay(
         id: 1, name: "Test", isBuiltin: false,
         nativeLogical: DisplaySize(width: width, height: height),
-        nativePixels: DisplaySize(width: width * 2, height: height * 2),
+        nativePixels: DisplaySize(width: pixels.0, height: pixels.1),
         refreshRate: 60)
 }
 
-@Test func dellOffersFourSizesEachSideOfNative() {
-    let widths = display(2048, 1280).scaledSizes.map(\.width)
-    #expect(widths == [1536, 1664, 1792, 1920, 2176, 2304, 2432, 2560])
+@Test func dellAt2xOffersEightStepsUpToThePanelWidth() {
+    let widths = display(2048, 1280, pixels: (4096, 2560)).scaledSizes.map(\.width)
+    #expect(widths == [2304, 2560, 2816, 3072, 3328, 3584, 3840, 4096])
 }
 
-@Test func scaledSizesKeepTheAspectRatio() {
-    let sizes = display(2048, 1280).scaledSizes
+@Test func scaledSizesKeepThePanelAspectRatio() {
+    let sizes = display(2048, 1280, pixels: (4096, 2560)).scaledSizes
     #expect(sizes.contains(DisplaySize(width: 2304, height: 1440)))
     #expect(sizes.allSatisfy { Double($0.width) / Double($0.height) == 1.6 })
 }
 
-@Test func builtinRoundsHeightAndStaysWithinRange() {
-    let sizes = display(1800, 1169).scaledSizes
-    #expect(sizes.map(\.width) == [1416, 1544, 1672, 1928, 2056, 2184])
-    #expect(sizes.first == DisplaySize(width: 1416, height: 920))
-    #expect(sizes.allSatisfy { $0.width >= 1350 && $0.width <= 2250 })
+@Test func dellAt1xOffers2xAndLeavesOutTheCurrentSize() {
+    let sizes = display(3072, 2560, pixels: (3072, 2560)).scaledSizes
+    #expect(sizes.map(\.width) == [1536, 1728, 1920, 2112, 2304, 2496, 2688, 2880])
+    #expect(sizes.first == DisplaySize(width: 1536, height: 1280))
+}
+
+@Test func builtinInAScaledModeUsesThePanelNotTheCurrentMode() {
+    let sizes = display(1800, 1169, pixels: (3024, 1964)).scaledSizes
+    #expect(sizes.map(\.width) == [1512, 1640, 1768, 1896, 2024, 2152, 2280, 2408, 2536])
+    #expect(sizes.first == DisplaySize(width: 1512, height: 982))
 }

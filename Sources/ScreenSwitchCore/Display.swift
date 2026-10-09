@@ -16,21 +16,25 @@ public struct PhysicalDisplay: Equatable, Sendable {
     public let id: CGDirectDisplayID
     public let name: String
     public let isBuiltin: Bool
-    /// The "looks like" size of the display's own mode, the size "Native" restores.
+    /// The "looks like" size of the display's current mode, the size "Native" restores.
     public let nativeLogical: DisplaySize
+    /// The panel's own pixel size, from its native mode, whatever mode it runs now.
     public let nativePixels: DisplaySize
     public let refreshRate: Double
 
-    /// Virtual logical sizes offered in the Resolution menu: steps of 128 px
-    /// around the native width, within 75% to 125% of it, at the native aspect ratio.
+    /// Virtual HiDPI sizes offered in the Resolution menu, at the panel's aspect
+    /// ratio: eight steps from half the panel width (plain 2x) up to the full
+    /// panel width (a 2x framebuffer scaled down to the panel). The current
+    /// native size is left out; the Native item covers it.
     public var scaledSizes: [DisplaySize] {
-        let width = nativeLogical.width
-        let aspect = Double(nativeLogical.height) / Double(width)
-        let steps = Int(Double(width) * 0.25 / 128)
-        return (-steps...steps)
-            .filter { $0 != 0 }
-            .map { width + $0 * 128 }
+        let half = nativePixels.width / 2
+        let aspect = Double(nativePixels.height) / Double(nativePixels.width)
+        let step = max(64, half / 8 / 64 * 64)
+        return (0...8)
+            .map { half + $0 * step }
+            .filter { $0 <= nativePixels.width }
             .map { DisplaySize(width: $0, height: Int((Double($0) * aspect).rounded())) }
+            .filter { $0 != nativeLogical }
     }
 }
 
