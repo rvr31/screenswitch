@@ -3,11 +3,11 @@ import Testing
 @testable import ScreenSwitchCore
 
 private let builtin = PhysicalDisplay(
-    id: 1, name: "Built-in Retina Display", isBuiltin: true,
+    id: 1, key: DisplayKey(vendor: 0x610, model: 1, serial: 0), name: "Built-in Retina Display", isBuiltin: true,
     nativeLogical: DisplaySize(width: 1800, height: 1169),
     nativePixels: DisplaySize(width: 3600, height: 2338), refreshRate: 120)
 private let dell = PhysicalDisplay(
-    id: 4, name: "DELL U5226KW", isBuiltin: false,
+    id: 4, key: DisplayKey(vendor: 0x10ac, model: 2, serial: 7), name: "DELL U5226KW", isBuiltin: false,
     nativeLogical: DisplaySize(width: 2048, height: 1280),
     nativePixels: DisplaySize(width: 4096, height: 2560), refreshRate: 120)
 
@@ -51,7 +51,7 @@ private func slider(for name: String, in entries: [MenuEntry]) -> (steps: [Resol
 
 @Test func nativeSortsAmongTheVirtualSizesByWidth() throws {
     let scaledBuiltin = PhysicalDisplay(
-        id: 1, name: "Built-in Retina Display", isBuiltin: true,
+        id: 1, key: builtin.key, name: "Built-in Retina Display", isBuiltin: true,
         nativeLogical: DisplaySize(width: 1800, height: 1169),
         nativePixels: DisplaySize(width: 3024, height: 1964), refreshRate: 120)
     let (steps, selected) = try #require(slider(for: scaledBuiltin.name, in: entries([scaledBuiltin])))
@@ -60,7 +60,7 @@ private func slider(for name: String, in entries: [MenuEntry]) -> (steps: [Resol
 }
 
 @Test func rememberedDisplaysShowOffWithoutASlider() {
-    let off = RememberedOff(id: 4, name: dell.name)
+    let off = RememberedOff(id: 4, name: dell.name, key: dell.key)
     let all = entries([builtin], off: [off])
     #expect(all.contains(.display(name: dell.name, isOn: false, toggle: .turnOn(4))))
     #expect(slider(for: dell.name, in: all) == nil)

@@ -12,8 +12,32 @@ public struct DisplaySize: Hashable, Codable, Sendable, CustomStringConvertible 
     public var description: String { "\(width) × \(height)" }
 }
 
+/// Identifies a display across ports and reconnects, which change its CGDirectDisplayID.
+public struct DisplayKey: Hashable, Codable, Sendable, Comparable, CustomStringConvertible {
+    public let vendor: UInt32
+    public let model: UInt32
+    public let serial: UInt32
+
+    public init(vendor: UInt32, model: UInt32, serial: UInt32) {
+        self.vendor = vendor
+        self.model = model
+        self.serial = serial
+    }
+
+    init(_ id: CGDirectDisplayID) {
+        self.init(vendor: CGDisplayVendorNumber(id), model: CGDisplayModelNumber(id), serial: CGDisplaySerialNumber(id))
+    }
+
+    public static func < (a: DisplayKey, b: DisplayKey) -> Bool {
+        (a.vendor, a.model, a.serial) < (b.vendor, b.model, b.serial)
+    }
+
+    public var description: String { String(format: "%04x:%04x:%08x", vendor, model, serial) }
+}
+
 public struct PhysicalDisplay: Equatable, Sendable {
     public let id: CGDirectDisplayID
+    public let key: DisplayKey
     public let name: String
     public let isBuiltin: Bool
     /// The "looks like" size of the display's current mode, the size "Native" restores.
@@ -41,4 +65,6 @@ public struct PhysicalDisplay: Equatable, Sendable {
 public struct RememberedOff: Codable, Equatable, Sendable {
     public let id: CGDirectDisplayID
     public let name: String
+    /// Nil for displays remembered before profiles existed.
+    public let key: DisplayKey?
 }

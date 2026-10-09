@@ -92,7 +92,7 @@ public final class DisplayManager {
         // A disabled display vanishes from both the active and the online display
         // lists, so this record is the only way to find it again to turn it on.
         turnedOff.removeAll { $0.id == id }
-        turnedOff.append(RememberedOff(id: id, name: display.name))
+        turnedOff.append(RememberedOff(id: id, name: display.name, key: display.key))
         refresh()
     }
 
@@ -257,6 +257,7 @@ public final class DisplayManager {
             ?? mode
         return PhysicalDisplay(
             id: id,
+            key: DisplayKey(id),
             name: name ?? (isBuiltin ? "Built-in Display" : "Display \(id)"),
             isBuiltin: isBuiltin,
             nativeLogical: DisplaySize(width: mode.width, height: mode.height),
