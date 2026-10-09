@@ -41,4 +41,10 @@ public struct PhysicalDisplay: Equatable, Sendable {
 public struct RememberedOff: Codable, Equatable, Sendable {
     public let id: CGDirectDisplayID
     public let name: String
+
+    /// A disabled display stays disabled when the others are unplugged, which
+    /// leaves the Mac without a display. These are the displays to turn on then.
+    public static func toRecover(online: [PhysicalDisplay], turnedOff: [RememberedOff]) -> [CGDirectDisplayID] {
+        online.isEmpty ? turnedOff.map(\.id) : []
+    }
 }

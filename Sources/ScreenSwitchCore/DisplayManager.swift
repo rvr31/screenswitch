@@ -1,6 +1,7 @@
 import AppKit
 import CoreGraphics
 import PrivateDisplay
+import os
 
 /// Single owner of all display state ScreenSwitch changes. Main thread only.
 @MainActor
@@ -33,6 +34,7 @@ public final class DisplayManager {
     private static let defaultsDomain = "nl.vanraan.screenswitch"
     private static let turnedOffKey = "turnedOff"
     private static let virtualVendorID: UInt32 = 0x5353
+    private static let log = Logger(subsystem: "nl.vanraan.screenswitch", category: "displays")
 
     public init() {
         // The app and the CLI share one defaults domain. Inside the app bundle
@@ -49,7 +51,11 @@ public final class DisplayManager {
         CGDisplayRegisterReconfigurationCallback({ _, flags, userInfo in
             guard !flags.contains(.beginConfigurationFlag), let userInfo else { return }
             let manager = Unmanaged<DisplayManager>.fromOpaque(userInfo).takeUnretainedValue()
-            Task { @MainActor in manager.refresh() }
+            Task { @MainActor in
+                manager.refresh()
+                DisplayManager.log.notice("reconfigured: online \(manager.online.map(\.id), privacy: .public) of \(DisplayManager.onlineDisplayIDs(), privacy: .public), off \(manager.turnedOff.map(\.id), privacy: .public)")
+                manager.recoverWhenNoneIsOnline()
+            }
         }, Unmanaged.passUnretained(self).toOpaque())
     }
 
@@ -62,7 +68,7 @@ public final class DisplayManager {
         knownNames.merge(Self.screenNames()) { _, new in new }
         let previous = Dictionary(online.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
         online = Self.onlineDisplayIDs()
-            .filter { CGDisplayVendorNumber($0) != Self.virtualVendorID }
+            .filter { CGDisplayVendorNumber($0) != Self.virtualVendorID && !Self.isWindowServerPlaceholder($0) }
             .compactMap { id in
                 // A mirrored display's mode may report the virtual screen, so keep
                 // what it looked like before it was scaled.
@@ -82,6 +88,21 @@ public final class DisplayManager {
         // A remembered display that is online again was turned on elsewhere
         // (System Settings, reboot); it no longer needs a "Turn on" entry.
         turnedOff.removeAll { onlineIDs.contains($0.id) }
+    }
+
+    /// Turns remembered displays back on when none is online, so an unplugged
+    /// cable does not leave the Mac dark. Errors are dropped: a remembered
+    /// display that is no longer connected cannot be turned on, and there is no
+    /// display to show an alert on.
+    public func recoverWhenNoneIsOnline() {
+        for id in RememberedOff.toRecover(online: online, turnedOff: turnedOff) {
+            do throws(DisplayError) {
+                try turnOn(id)
+                Self.log.notice("recovery turned on \(id, privacy: .public)")
+            } catch {
+                Self.log.error("recovery of \(id, privacy: .public) failed: \(error.description, privacy: .public)")
+            }
+        }
     }
 
     public func turnOff(_ id: CGDirectDisplayID) throws(DisplayError) {
@@ -226,6 +247,14 @@ public final class DisplayManager {
     /// Disables an unused virtual display so it is not an empty extra desktop.
     private static func park(_ virtual: CGVirtualDisplay) {
         try? DisplayConfiguration.apply { SkyLight.configureEnabled($0, virtual.displayID, false) }
+    }
+
+    /// When the last physical display is unplugged, WindowServer adds a
+    /// 1920x1080 display of its own so the desktop keeps existing. It reports
+    /// vendor "unkn" and model "virt" (measured on macOS 26). It is not a
+    /// display anyone can see, so it does not count as online.
+    private static func isWindowServerPlaceholder(_ id: CGDirectDisplayID) -> Bool {
+        CGDisplayVendorNumber(id) == 0x756e_6b6e && CGDisplayModelNumber(id) == 0x7669_7274
     }
 
     private static func onlineDisplayIDs() -> [CGDirectDisplayID] {

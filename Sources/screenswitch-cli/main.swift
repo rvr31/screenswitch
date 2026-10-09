@@ -13,6 +13,7 @@ let usage = """
       status            displays, scaling state and the CoreGraphics display lists
       menu              the status menu as the app would show it
       off ID | on ID    turn a display off or on
+      recover           turn remembered displays on when none is online
       scale ID WxH      mirror display ID onto a virtual HiDPI display of WxH
       native ID         back to the display's own mode
       wait SECONDS      keep the process (and its virtual displays) alive
@@ -66,6 +67,7 @@ let arity = ["off": 1, "on": 1, "scale": 2, "native": 1, "wait": 1, "sizes": 1]
     case ("menu", _): print(outline(MenuModel.entries(for: manager, opensAtLogin: false, update: .idle)).joined(separator: "\n"))
     case ("off", let id?): try manager.turnOff(id)
     case ("on", let id?): try manager.turnOn(id)
+    case ("recover", _): manager.recoverWhenNoneIsOnline()
     case ("native", let id?): try manager.setNative(id)
     case ("sizes", let id?):
         guard let display = manager.display(id) else { throw .unknownDisplay(id) }

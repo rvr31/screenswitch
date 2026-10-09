@@ -14,7 +14,7 @@ macOS has no switch for a connected display. You unplug it or close the lid. And
 
 ## What it does
 
-- **Switch a display off and on.** The display stays connected and keeps its place in the arrangement. A display that is off stays in the menu, also after a restart, so you can switch it back on.
+- **Switch a display off and on.** The display stays connected and keeps its place in the arrangement. A display that is off stays in the menu, also after a restart, so you can switch it back on. When you unplug the other displays and a display that is off is the only one left, ScreenSwitch turns it back on so the Mac does not go dark.
 - **Pick any scaled size.** Each display gets a slider from the largest text to the most space, in eight HiDPI steps between half the panel width and the full panel width. Native is one of the stops. Drag to see the size, release to apply.
 - **Open at Login.** One menu item registers ScreenSwitch as a login item.
 - **Updates itself.** It checks GitHub once a day and offers the new version in the menu.
@@ -46,6 +46,7 @@ screenswitch-cli status                  # displays, their modes and scaling sta
 screenswitch-cli off 4 wait 3 on 4       # switch display 4 off, wait, switch it on
 screenswitch-cli scale 4 2304x1440       # scaled size, held until the process exits
 screenswitch-cli sizes 4                 # the sizes the slider offers for display 4
+screenswitch-cli recover                 # switch remembered displays back on if none is online
 ```
 
 Run `screenswitch-cli` without arguments for the full list. `status` only reads, the others change your displays.
@@ -54,7 +55,7 @@ Run `screenswitch-cli` without arguments for the full list. `status` only reads,
 
 ScreenSwitch uses two private macOS APIs. Either can change or disappear in a macOS update.
 
-- `CGSConfigureDisplayEnabled` from the SkyLight framework switches a display off and on. ScreenSwitch loads it at run time, so a missing symbol shows an error instead of a crash. A display that is off stays off after ScreenSwitch quits. ScreenSwitch remembers it and shows the switch again at the next launch.
+- `CGSConfigureDisplayEnabled` from the SkyLight framework switches a display off and on. ScreenSwitch loads it at run time, so a missing symbol shows an error instead of a crash. A display that is off stays off after ScreenSwitch quits. ScreenSwitch remembers it and shows the switch again at the next launch. ScreenSwitch also turns a remembered display on when it is the only one left. macOS then shows a placeholder display of its own, which ScreenSwitch ignores. This only works while ScreenSwitch is running.
 - `CGVirtualDisplay` from CoreGraphics creates a virtual HiDPI display. For a scaled size, ScreenSwitch mirrors the panel onto a virtual display of that size. The GPU renders a 2x framebuffer and scales it onto the panel, which keeps its native signal. Each panel gets one virtual display that ScreenSwitch reuses for the next size.
 
 Quit unmirrors every scaled display. The virtual displays end with the process, so a crash also returns the panels to their own mode.
