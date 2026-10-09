@@ -76,4 +76,12 @@ A local build reports version 1.0. Set `VERSION` when building to use a differen
 
 ## Releases
 
-Every push to `main` that changes `Sources/`, `Package.swift` or `build-app.sh` runs the Release workflow. Changes to docs, tests or the workflow alone do not release; start a run by hand from the Actions tab when you need one. It runs the tests, builds universal binaries and publishes a GitHub release with the app zip, the CLI tarball and `SHA256SUMS`. The version is the previous release with the patch number raised by one. For a minor or major bump, create a release such as `v0.2.0` by hand; the next push continues from there. Releases require the signing and notarization secrets in the protected `release` environment. See [docs/signing.md](docs/signing.md).
+Every push to `main` that changes `Sources/`, `Package.swift`, `build-app.sh` or `LICENSE` runs the Release workflow. Changes to docs, tests or the workflow alone do not release; start a run by hand from the Actions tab when you need one. It runs the tests, builds universal binaries and publishes a GitHub release with the app zip, the CLI tarball, the matching source archive and `SHA256SUMS`. The version is the previous release with the patch number raised by one. For a minor or major bump, create a release such as `v0.2.0` by hand; the next push continues from there. Releases require the signing and notarization secrets in the protected `release` environment. See [docs/signing.md](docs/signing.md).
+
+## License
+
+Copyright (C) 2026 Robin van Raan.
+
+ScreenSwitch is free software: you can redistribute it and/or modify it under the GNU General Public License, version 3 only (`GPL-3.0-only`). It is distributed without any warranty, including the implied warranties of merchantability or fitness for a particular purpose. See [LICENSE](LICENSE) for the full terms.
+
+From v0.1.6, releases include their corresponding source code and build scripts in the source archive. The app bundle and CLI archive include the license and this README.

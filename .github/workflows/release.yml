@@ -13,6 +13,7 @@ on:
       - "Package.swift"
       - "Package.resolved"
       - "build-app.sh"
+      - "LICENSE"
   workflow_dispatch:
 
 permissions:
@@ -120,7 +121,8 @@ jobs:
           set -euo pipefail
           mkdir -p dist
           ditto -c -k --keepParent build/ScreenSwitch.app "dist/ScreenSwitch-$VERSION.zip"
-          tar -czf "dist/screenswitch-cli-$VERSION-macos-universal.tar.gz" -C build screenswitch-cli
+          tar -czf "dist/screenswitch-cli-$VERSION-macos-universal.tar.gz" -C build screenswitch-cli -C "$GITHUB_WORKSPACE" LICENSE README.md
+          git archive --format=tar.gz --prefix="screenswitch-$VERSION/" -o "dist/screenswitch-$VERSION-source.tar.gz" "$GITHUB_SHA"
           (cd dist && shasum -a 256 ./* > SHA256SUMS)
           ls -l dist
 
@@ -131,6 +133,7 @@ jobs:
           gh release create "v$VERSION" \
             --target "$GITHUB_SHA" \
             --title "ScreenSwitch v$VERSION" \
+            --notes "Licensed under GPL-3.0-only. The matching source code and build scripts are included in the source archive." \
             --generate-notes \
             dist/*
 
