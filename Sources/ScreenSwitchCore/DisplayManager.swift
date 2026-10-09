@@ -169,8 +169,13 @@ public final class DisplayManager {
         }
         do throws(DisplayError) {
             guard virtual.apply(settings), virtual.displayID != kCGNullDirectDisplay else { throw .virtualDisplayFailed }
-            if case .parked = virtuals[id] {
-                try DisplayConfiguration.apply { SkyLight.configureEnabled($0, virtual.displayID, true) }
+            // A parked display is disabled, and once this process has turned any
+            // display on or off, macOS also leaves a new virtual display offline.
+            // The enable call then reports kCGErrorFailure even though it brings
+            // the display online (measured on macOS 26), so the online list decides.
+            if !Self.onlineDisplayIDs().contains(virtual.displayID) {
+                try? DisplayConfiguration.apply { SkyLight.configureEnabled($0, virtual.displayID, true) }
+                guard Self.onlineDisplayIDs().contains(virtual.displayID) else { throw .virtualDisplayFailed }
             }
             try DisplayConfiguration.apply { CGConfigureDisplayMirrorOfDisplay($0, id, virtual.displayID) }
             // A fresh virtual display lists no modes until its first configuration
