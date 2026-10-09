@@ -7,7 +7,12 @@ import PrivateDisplay
 public final class DisplayManager {
     public private(set) var online: [PhysicalDisplay] = []
     public private(set) var turnedOff: [RememberedOff] = [] {
-        didSet { defaults.set(try? JSONEncoder().encode(turnedOff), forKey: Self.turnedOffKey) }
+        // Every refresh runs removeAll, and the app and the CLI share this key,
+        // so writing an unchanged list would overwrite another process's record.
+        didSet {
+            guard turnedOff != oldValue else { return }
+            defaults.set(try? JSONEncoder().encode(turnedOff), forKey: Self.turnedOffKey)
+        }
     }
 
     /// Each physical display gets one virtual display, created on first use and
