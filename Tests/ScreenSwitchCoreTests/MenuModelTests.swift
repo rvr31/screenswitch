@@ -15,9 +15,14 @@ private func entries(
     _ displays: [PhysicalDisplay],
     virtual: [CGDirectDisplayID: DisplaySize] = [:],
     off: [RememberedOff] = [],
+    profiles: [String] = [],
+    active: String? = nil,
     opensAtLogin: Bool = false
 ) -> [MenuEntry] {
-    MenuModel.entries(displays: displays, virtualSizes: virtual, turnedOff: off, opensAtLogin: opensAtLogin)
+    MenuModel.entries(
+        displays: displays, virtualSizes: virtual, turnedOff: off,
+        profiles: profiles.map { Profile(name: $0, targets: [dell.key: .native]) }, activeProfile: active,
+        opensAtLogin: opensAtLogin)
 }
 
 private func slider(for name: String, in entries: [MenuEntry]) -> (steps: [ResolutionStep], selected: Int)? {
@@ -70,4 +75,29 @@ private func slider(for name: String, in entries: [MenuEntry]) -> (steps: [Resol
 @Test func openAtLoginIsCheckedWhenRegistered() {
     #expect(entries([builtin], opensAtLogin: true).contains(.item("Open at Login", action: .toggleOpenAtLogin, checked: true)))
     #expect(entries([builtin]).contains(.item("Open at Login", action: .toggleOpenAtLogin, checked: false)))
+}
+
+@Test func profilesAreListedByNameAfterTheDisplaysWithTheActiveOneChecked() throws {
+    let off = RememberedOff(id: 1, name: builtin.name, key: builtin.key)
+    let all = entries([dell], off: [off], profiles: ["Zed", "desk", "Alpha"], active: "desk")
+    let start = try #require(all.firstIndex(of: .header("Profiles")))
+    #expect(Array(all[start...].prefix(4)) == [
+        .header("Profiles"),
+        .item("Alpha", action: .applyProfile("Alpha")),
+        .item("desk", action: .applyProfile("desk"), checked: true),
+        .item("Zed", action: .applyProfile("Zed")),
+    ])
+    let lastDisplay = try #require(all.lastIndex { if case .display = $0 { true } else { false } })
+    #expect(lastDisplay < start)
+    #expect(start < all.firstIndex(of: .item("Open at Login", action: .toggleOpenAtLogin))!)
+}
+
+@Test func deleteSubmenuIsShownOnlyWhenProfilesExist() {
+    let save = MenuEntry.item("Save Current Setup as Profile…", action: .saveProfile)
+    let none = entries([builtin, dell])
+    #expect(none.contains(save))
+    #expect(!none.contains { if case .submenu = $0 { true } else { false } })
+    let some = entries([builtin, dell], profiles: ["Desk"])
+    #expect(some.contains(save))
+    #expect(some.contains(.submenu("Delete Profile", [.item("Desk", action: .deleteProfile("Desk"))])))
 }
