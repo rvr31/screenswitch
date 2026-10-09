@@ -1,6 +1,6 @@
 # Signing and notarization
 
-Releases are signed ad hoc until five repository secrets exist. Once they do, the Release workflow signs the app and the CLI with a Developer ID, sends both to Apple for notarization and staples the ticket to the app. A notarized download opens without the "Apple could not verify" warning.
+The Release workflow requires five secrets in the protected `release` environment. It signs the app and the CLI with a Developer ID, sends both to Apple for notarization and staples the ticket to the app. A notarized download opens without the "Apple could not verify" warning.
 
 This setup happens once, on the Mac that holds the Apple Developer account. Steps marked **you** involve passwords or Apple's web pages. Do those by hand, not through an agent.
 
@@ -14,7 +14,7 @@ This setup happens once, on the Mac that holds the Apple Developer account. Step
 | `APPLE_APP_PASSWORD` | An app-specific password for that Apple ID |
 | `APPLE_TEAM_ID` | The 10-character team ID |
 
-With `MACOS_CERT_P12` empty, the workflow skips signing and notarization. With the certificate set but notarization failing, the run fails and publishes nothing; the log shows Apple's reason.
+The `release` environment must allow only the `main` branch. Store signing credentials as environment secrets, never as repository secrets: anyone with repository write access can run workflows that use repository secrets. Missing credentials or failed notarization stop the run before it publishes a release. Local builds without `SIGN_IDENTITY` remain signed ad hoc.
 
 ## Steps
 
@@ -38,26 +38,26 @@ With `MACOS_CERT_P12` empty, the workflow skips signing and notarization. With t
 
 4. **You:** create an app-specific password at [account.apple.com](https://account.apple.com) under Sign-In and Security > App-Specific Passwords. Name it `screenswitch-notarize`.
 
-5. **You:** store the secrets. Each `gh secret set` without a value prompts for it, so nothing lands in shell history:
+5. Create an environment named `release` in Settings > Environments. Under Deployment branches and tags, select **Selected branches and tags** and add only the branch `main`. **You:** store the environment secrets. Each `gh secret set` without a value prompts for it, so nothing lands in shell history:
 
    ```bash
-   base64 -i ~/Desktop/developer-id.p12 | gh secret set MACOS_CERT_P12 -R rvr31/screenswitch
+   base64 -i ~/Desktop/developer-id.p12 | gh secret set MACOS_CERT_P12 --env release -R rvr31/screenswitch
    ```
 
    ```bash
-   gh secret set MACOS_CERT_PASSWORD -R rvr31/screenswitch
+   gh secret set MACOS_CERT_PASSWORD --env release -R rvr31/screenswitch
    ```
 
    ```bash
-   gh secret set APPLE_ID -R rvr31/screenswitch
+   gh secret set APPLE_ID --env release -R rvr31/screenswitch
    ```
 
    ```bash
-   gh secret set APPLE_APP_PASSWORD -R rvr31/screenswitch
+   gh secret set APPLE_APP_PASSWORD --env release -R rvr31/screenswitch
    ```
 
    ```bash
-   gh secret set APPLE_TEAM_ID -R rvr31/screenswitch
+   gh secret set APPLE_TEAM_ID --env release -R rvr31/screenswitch
    ```
 
 6. Delete the exported file:
@@ -69,7 +69,7 @@ With `MACOS_CERT_P12` empty, the workflow skips signing and notarization. With t
 7. Start a release and watch it. A manual run publishes the next patch version, the same as a push to `main` that changes the app:
 
    ```bash
-   gh secret list -R rvr31/screenswitch
+   gh secret list --env release -R rvr31/screenswitch
    ```
 
    ```bash
@@ -80,7 +80,7 @@ With `MACOS_CERT_P12` empty, the workflow skips signing and notarization. With t
    gh run watch -R rvr31/screenswitch --exit-status "$(gh run list -R rvr31/screenswitch --limit 1 --json databaseId --jq '.[0].databaseId')"
    ```
 
-   The Import Developer ID certificate and Notarize steps should run, not show as skipped. Notarization usually takes one to five minutes.
+   The Import Developer ID certificate and Notarize steps must succeed. Notarization usually takes one to five minutes.
 
 8. Check the published app:
 
@@ -90,7 +90,7 @@ With `MACOS_CERT_P12` empty, the workflow skips signing and notarization. With t
 
    `spctl` should print `accepted` and `source=Notarized Developer ID`. Then download the zip in a browser, open the app, and confirm macOS asks at most "downloaded from the internet, open?" instead of blocking it.
 
-9. Remove the quarantine step from Install in `README.md`, since a notarized app no longer needs it. A README change does not publish a release.
+9. If migrating from repository secrets, remove all five repository-level signing secrets after the release succeeds. Keeping copies there lets workflows on other branches use them without the environment's branch restriction.
 
 ## When it fails
 

@@ -17,7 +17,6 @@ macOS has no switch for a connected display. You unplug it or close the lid. And
 - **Switch a display off and on.** The display stays connected and keeps its place in the arrangement. A display that is off stays in the menu, also after a restart, so you can switch it back on.
 - **Pick any scaled size.** Each display gets a slider from the largest text to the most space, in eight HiDPI steps between half the panel width and the full panel width. Native is one of the stops. Drag to see the size, release to apply.
 - **Open at Login.** One menu item registers ScreenSwitch as a login item.
-- **Updates itself.** It checks GitHub once a day and offers the new version in the menu.
 
 ## Install
 
@@ -31,7 +30,7 @@ Choose "Open at Login" from the copy in `/Applications`. The login item points a
 
 ### Updates
 
-ScreenSwitch checks the latest GitHub release at launch and once a day. When a newer one exists, "Install ScreenSwitch X…" appears in the menu. Installing downloads the zip, checks it against the release's `SHA256SUMS`, replaces the app in its folder after ScreenSwitch quits and opens the new version. "Check for Updates…" checks right away. If the folder is not writable, download the release by hand.
+Download a newer version from the [latest release](https://github.com/rvr31/screenswitch/releases/latest). Quit ScreenSwitch, replace the copy in `/Applications`, and open it again. The app does not include an automatic updater.
 
 ## Command line
 
@@ -73,8 +72,8 @@ ditto build/ScreenSwitch.app /Applications/ScreenSwitch.app
 
 `scripts/verify-displays.sh` exercises every operation on your real displays: off, on, scale, native. Screens go dark and flicker for about 30 seconds, so save your work first. Pass the display IDs from `screenswitch-cli status` as arguments; they default to 4 (external) and 1 (built-in).
 
-A local build reports version 1.0, newer than every release, so it never offers an update. To test updating, build an older version with `VERSION=0.0.1 ./build-app.sh`.
+A local build reports version 1.0. Set `VERSION` when building to use a different bundle version, for example `VERSION=0.1.4 ./build-app.sh`.
 
 ## Releases
 
-Every push to `main` that changes `Sources/`, `Package.swift` or `build-app.sh` runs the Release workflow. Changes to docs, tests or the workflow alone do not release; start a run by hand from the Actions tab when you need one. It runs the tests, builds universal binaries and publishes a GitHub release with the app zip, the CLI tarball and `SHA256SUMS`. The version is the previous release with the patch number raised by one. For a minor or major bump, create a release such as `v0.2.0` by hand; the next push continues from there. Signing and notarization switch on once the secrets in [docs/signing.md](docs/signing.md) exist.
+Every push to `main` that changes `Sources/`, `Package.swift` or `build-app.sh` runs the Release workflow. Changes to docs, tests or the workflow alone do not release; start a run by hand from the Actions tab when you need one. It runs the tests, builds universal binaries and publishes a GitHub release with the app zip, the CLI tarball and `SHA256SUMS`. The version is the previous release with the patch number raised by one. For a minor or major bump, create a release such as `v0.2.0` by hand; the next push continues from there. Releases require the signing and notarization secrets in the protected `release` environment. See [docs/signing.md](docs/signing.md).

@@ -89,14 +89,16 @@ let arity = ["off": 1, "on": 1, "scale": 2, "native": 1, "wait": 1, "sizes": 1]
     var args = arguments[...]
     if args.isEmpty { print(usage); return 2 }
     while let command = args.popFirst() {
-        let operands = Array(args.prefix(arity[command, default: 0]))
+        let required = arity[command, default: 0]
+        let operands = Array(args.prefix(required))
+        guard operands.count == required else { print(usage); return 2 }
         args = args.dropFirst(operands.count)
         print(([">", command] + operands).joined(separator: " "))
         do {
             let understood = try autoreleasepool { () throws(DisplayError) in
                 try execute(command, operands, on: manager)
             }
-            guard understood, operands.count == arity[command, default: 0] else { print(usage); return 2 }
+            guard understood else { print(usage); return 2 }
         } catch {
             print("  error: \(error)")
             return 1

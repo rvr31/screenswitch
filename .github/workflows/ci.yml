@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: macos-26
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - name: Test
+        run: swift test
+      - name: Check incomplete CLI arguments
+        run: |
+          python3 - <<'PY'
+          import subprocess
+
+          cases = [[], ['scale'], ['scale', '1'], ['off'], ['on'], ['native'], ['sizes'], ['wait'], ['unknown']]
+          for args in cases:
+              result = subprocess.run(['.build/debug/screenswitch-cli', *args], capture_output=True, text=True, timeout=5)
+              assert result.returncode == 2, (args, result.returncode, result.stderr)
+          print(f'{len(cases)} invalid inputs returned exit 2')
+          PY
