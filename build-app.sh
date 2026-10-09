@@ -1,9 +1,12 @@
 #!/bin/sh
 # Builds build/ScreenSwitch.app, a menu bar app without a Dock icon.
+# Arguments go to swift build (CI passes --arch arm64 --arch x86_64).
+# VERSION sets the bundle version (CI passes the tag without the v).
 set -e
 cd "$(dirname "$0")"
-swift build -c release
-BIN="$(swift build -c release --show-bin-path)"
+VERSION="${VERSION:-1.0}"
+swift build -c release "$@"
+BIN="$(swift build -c release "$@" --show-bin-path)"
 APP=build/ScreenSwitch.app
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS"
@@ -17,8 +20,8 @@ cat > "$APP/Contents/Info.plist" <<PLIST
     <key>CFBundleIdentifier</key><string>nl.vanraan.screenswitch</string>
     <key>CFBundleName</key><string>ScreenSwitch</string>
     <key>CFBundlePackageType</key><string>APPL</string>
-    <key>CFBundleShortVersionString</key><string>1.0</string>
-    <key>CFBundleVersion</key><string>1</string>
+    <key>CFBundleShortVersionString</key><string>$VERSION</string>
+    <key>CFBundleVersion</key><string>$VERSION</string>
     <key>LSMinimumSystemVersion</key><string>14.0</string>
     <key>LSUIElement</key><true/>
     <key>NSHighResolutionCapable</key><true/>

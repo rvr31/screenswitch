@@ -8,6 +8,18 @@ Per display, the menu shows:
 - "Turn off display", disabled when it is the only active display,
 - "Turn on <name>" for each display ScreenSwitch turned off, kept across restarts.
 
+## Download
+
+Download `ScreenSwitch-<version>.zip` from [Releases](../../releases/latest), unzip it and move `ScreenSwitch.app` to `/Applications`. The app runs on Apple silicon and Intel.
+
+The app is signed ad hoc and not notarized, so Gatekeeper blocks the first launch. Remove the quarantine flag once:
+
+```sh
+xattr -dr com.apple.quarantine /Applications/ScreenSwitch.app
+```
+
+Each release also has `screenswitch-cli` as a tarball and a `SHA256SUMS` file.
+
 ## Build
 
 Requires macOS 14 or later and the Xcode command line tools.
@@ -53,3 +65,14 @@ The IDs default to 4 (external) and 1 (built-in). Run `swift run screenswitch-cl
 3. Mirror the external display onto a 2304 × 1440 virtual display, then return to native.
 
 It prints the active display list before and after each step. If a step fails, or you press Ctrl-C, an exit trap ends the scaling process and turns both displays back on.
+
+## Release
+
+Push a tag that starts with `v`. The Release workflow runs the tests, builds universal binaries and publishes a GitHub release with the app zip, the CLI tarball and `SHA256SUMS`.
+
+```sh
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+Running the workflow by hand from the Actions tab builds the same files as a workflow artifact without publishing a release.

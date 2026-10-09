@@ -1,0 +1,48 @@
+name: Release
+
+# Push a tag like v0.1.0 to build and publish a GitHub release.
+# Run it by hand (Actions > Release > Run workflow) to build without publishing.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Test
+        run: swift test
+
+      - name: Build
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_REF_TYPE" == tag ]]; then VERSION="${GITHUB_REF_NAME#v}"; else VERSION="0.0.0-dev"; fi
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          VERSION="$VERSION" ./build-app.sh --arch arm64 --arch x86_64
+          BIN="$(swift build -c release --arch arm64 --arch x86_64 --show-bin-path)"
+          lipo -info build/ScreenSwitch.app/Contents/MacOS/ScreenSwitch "$BIN/screenswitch-cli"
+
+          mkdir -p dist
+          ditto -c -k --keepParent build/ScreenSwitch.app "dist/ScreenSwitch-$VERSION.zip"
+          cp "$BIN/screenswitch-cli" build/screenswitch-cli
+          codesign --force --sign - build/screenswitch-cli
+          tar -czf "dist/screenswitch-cli-$VERSION-macos-universal.tar.gz" -C build screenswitch-cli
+          (cd dist && shasum -a 256 * > SHA256SUMS)
+          ls -l dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: screenswitch-${{ env.VERSION }}
+          path: dist/*
+
+      - name: Publish release
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" --title "ScreenSwitch $GITHUB_REF_NAME" --generate-notes dist/*
