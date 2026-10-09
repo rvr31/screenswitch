@@ -69,11 +69,4 @@ It prints the active display list before and after each step. If a step fails, o
 
 ## Release
 
-Push a tag that starts with `v`. The Release workflow runs the tests, builds universal binaries and publishes a GitHub release with the app zip, the CLI tarball and `SHA256SUMS`.
-
-```sh
-git tag v0.1.0
-git push origin v0.1.0
-```
-
-Running the workflow by hand from the Actions tab builds the same files as a workflow artifact without publishing a release.
+Every push to `main` runs the Release workflow. It runs the tests, builds universal binaries (arm64 and x86_64) and publishes a GitHub release with the app zip, the CLI tarball and `SHA256SUMS`. The version is the previous release with the patch number raised by one, starting at v0.1.0. For a minor or major bump, create a release such as `v0.2.0` by hand; the next push continues from there.

@@ -1,20 +1,40 @@
 name: Release
 
-# Push a tag like v0.1.0 to build and publish a GitHub release.
-# Run it by hand (Actions > Release > Run workflow) to build without publishing.
+# Every push to main publishes a release. The version is the latest release
+# with the patch number raised by one, starting at v0.1.0. Bump the minor or
+# major by hand with a release named e.g. v0.2.0; the next push continues from it.
 on:
   push:
-    tags: ["v*"]
+    branches: [main]
   workflow_dispatch:
 
 permissions:
   contents: write
 
+concurrency:
+  group: release
+  cancel-in-progress: false
+
 jobs:
   release:
     runs-on: macos-26
+    env:
+      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
+
+      - name: Next version
+        run: |
+          set -euo pipefail
+          LATEST="$(gh release list --exclude-drafts --limit 1 --json tagName --jq '.[0].tagName // ""')"
+          if [[ -z "$LATEST" ]]; then
+            VERSION=0.1.0
+          else
+            IFS=. read -r MAJOR MINOR PATCH <<< "${LATEST#v}"
+            VERSION="$MAJOR.$MINOR.$((PATCH + 1))"
+          fi
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "Releasing v$VERSION (previous: ${LATEST:-none})"
 
       - name: Test
         run: swift test
@@ -22,9 +42,7 @@ jobs:
       - name: Build
         run: |
           set -euo pipefail
-          if [[ "$GITHUB_REF_TYPE" == tag ]]; then VERSION="${GITHUB_REF_NAME#v}"; else VERSION="0.0.0-dev"; fi
-          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
-          VERSION="$VERSION" ./build-app.sh --arch arm64 --arch x86_64
+          ./build-app.sh --arch arm64 --arch x86_64
           BIN="$(swift build -c release --arch arm64 --arch x86_64 --show-bin-path)"
           lipo -info build/ScreenSwitch.app/Contents/MacOS/ScreenSwitch "$BIN/screenswitch-cli"
 
@@ -36,13 +54,10 @@ jobs:
           (cd dist && shasum -a 256 * > SHA256SUMS)
           ls -l dist
 
-      - uses: actions/upload-artifact@v4
-        with:
-          name: screenswitch-${{ env.VERSION }}
-          path: dist/*
-
       - name: Publish release
-        if: github.ref_type == 'tag'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" --title "ScreenSwitch $GITHUB_REF_NAME" --generate-notes dist/*
+        run: |
+          gh release create "v$VERSION" \
+            --target "$GITHUB_SHA" \
+            --title "ScreenSwitch v$VERSION" \
+            --generate-notes \
+            dist/*
