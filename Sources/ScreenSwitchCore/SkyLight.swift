@@ -35,7 +35,7 @@ enum DisplayConfiguration {
 
 public enum DisplayError: Error, CustomStringConvertible {
     case coreGraphics(CGError)
-    case modeUnavailable(DisplaySize)
+    case sizeNotOffered(DisplaySize)
     case virtualDisplayFailed
     case onlyActiveDisplay
     case unknownDisplay(CGDirectDisplayID)
@@ -44,7 +44,7 @@ public enum DisplayError: Error, CustomStringConvertible {
         switch self {
         case .coreGraphics(.notImplemented): "a private macOS display API is missing on this macOS version"
         case .coreGraphics(let error): "CoreGraphics error \(error.rawValue)"
-        case .modeUnavailable(let size): "the virtual display has no \(size) HiDPI mode"
+        case .sizeNotOffered(let size): "\(size) is not one of the display's virtual sizes"
         case .virtualDisplayFailed: "macOS refused to create the virtual display"
         case .onlyActiveDisplay: "this is the only active display"
         case .unknownDisplay(let id): "no display with id \(id)"

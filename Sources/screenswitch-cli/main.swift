@@ -3,7 +3,7 @@ import CoreGraphics
 import ScreenSwitchCore
 
 // Drives DisplayManager without the menu bar, for verification. Commands run in
-// order in one process, then the process exits through the same restoreAll()
+// order in one process, then the process exits through the same unmirrorAllBeforeExit()
 // the app runs on quit:
 //   screenswitch-cli status off 4 wait 3 status on 4 status
 //   screenswitch-cli scale 4 2304x1440 wait 5 status native 4 status
@@ -16,7 +16,7 @@ let usage = """
       scale ID WxH      mirror display ID onto a virtual HiDPI display of WxH
       native ID         back to the display's own mode
       wait SECONDS      keep the process (and its virtual displays) alive
-      crash             exit immediately, skipping restoreAll()
+      crash             exit immediately, skipping unmirrorAllBeforeExit()
     """
 
 func displayList(_ get: (UInt32, UnsafeMutablePointer<CGDirectDisplayID>?, UnsafeMutablePointer<UInt32>?) -> CGError) -> [CGDirectDisplayID] {
@@ -82,7 +82,7 @@ let arity = ["off": 1, "on": 1, "scale": 2, "native": 1, "wait": 1]
 
 @MainActor func run(_ arguments: [String]) -> Int32 {
     let manager = DisplayManager()
-    defer { manager.restoreAll() }
+    defer { manager.unmirrorAllBeforeExit() }
     var args = arguments[...]
     if args.isEmpty { print(usage); return 2 }
     while let command = args.popFirst() {

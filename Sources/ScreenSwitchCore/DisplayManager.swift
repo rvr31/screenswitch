@@ -6,18 +6,26 @@ import PrivateDisplay
 @MainActor
 public final class DisplayManager {
     public private(set) var online: [PhysicalDisplay] = []
-    /// The virtual logical size each scaled display mirrors. Absent means native.
-    public private(set) var virtualSizes: [CGDirectDisplayID: DisplaySize] = [:]
     public private(set) var turnedOff: [RememberedOff] = [] {
         didSet { defaults.set(try? JSONEncoder().encode(turnedOff), forKey: Self.turnedOffKey) }
     }
 
-    /// One virtual display per physical display, created on first use and kept
-    /// until the process exits; it is enabled exactly while its display has a
-    /// virtual size. Releasing a virtual display that was mirrored leaves this
-    /// process's display list reporting it, after which every display
-    /// configuration fails with kCGErrorFailure (measured on macOS 26).
-    private var virtualDisplays: [CGDirectDisplayID: CGVirtualDisplay] = [:]
+    /// Each physical display gets one virtual display, created on first use and
+    /// kept until the process exits. Releasing a virtual display that was
+    /// mirrored leaves this process's display list reporting it, after which
+    /// every display configuration fails with kCGErrorFailure (measured on macOS 26).
+    private enum Virtual {
+        /// Disabled, so it is not an empty extra desktop; the panel shows its own mode.
+        case parked(CGVirtualDisplay)
+        case mirrored(CGVirtualDisplay, DisplaySize)
+    }
+    private var virtuals: [CGDirectDisplayID: Virtual] = [:]
+
+    /// The virtual logical size each scaled display mirrors. Absent means native.
+    public var virtualSizes: [CGDirectDisplayID: DisplaySize] {
+        virtuals.compactMapValues { if case .mirrored(_, let size) = $0 { size } else { nil } }
+    }
+
     /// NSScreen names lag behind CoreGraphics in a process that is not running
     /// an app event loop, and a disabled or mirrored display has no NSScreen.
     private var knownNames: [CGDirectDisplayID: String] = [:]
@@ -58,16 +66,18 @@ public final class DisplayManager {
             .compactMap { id in
                 // A mirrored display's mode may report the virtual screen, so keep
                 // what it looked like before it was scaled.
-                if virtualSizes[id] != nil, let known = previous[id] { return known }
+                if case .mirrored = virtuals[id], let known = previous[id] { return known }
                 return Self.physicalDisplay(id, name: knownNames[id])
             }
             .sorted { ($0.isBuiltin ? 0 : 1, $0.id) < ($1.isBuiltin ? 0 : 1, $1.id) }
 
         let onlineIDs = Set(online.map(\.id))
         // An unplugged display leaves its virtual screen behind as an empty desktop.
-        for id in virtualSizes.keys where !onlineIDs.contains(id) {
-            if let virtual = virtualDisplays[id] { Self.park(virtual) }
-            virtualSizes[id] = nil
+        for (id, state) in virtuals where !onlineIDs.contains(id) {
+            if case .mirrored(let virtual, _) = state {
+                Self.park(virtual)
+                virtuals[id] = .parked(virtual)
+            }
         }
         // A remembered display that is online again was turned on elsewhere
         // (System Settings, reboot); it no longer needs a "Turn on" entry.
@@ -97,67 +107,78 @@ public final class DisplayManager {
     /// keeps its own native signal.
     public func setVirtual(_ id: CGDirectDisplayID, size: DisplaySize) throws(DisplayError) {
         guard let display = display(id) else { throw .unknownDisplay(id) }
-        let wasNative = virtualSizes[id] == nil
-        if let parked = virtualDisplays[id] {
-            try switchVirtual(parked, of: id, to: size, enable: wasNative)
-        } else {
-            // A new virtual display starts in its first mode, and its mode list is
-            // not readable until WindowServer has set it up.
-            let virtual = try Self.makeVirtualDisplay(for: display, startingAt: size)
-            virtualDisplays[id] = virtual
-            do throws(DisplayError) {
-                try DisplayConfiguration.apply { CGConfigureDisplayMirrorOfDisplay($0, id, virtual.displayID) }
-            } catch {
-                Self.park(virtual)
-                throw error
+        guard display.scaledSizes.contains(size) else { throw .sizeNotOffered(size) }
+        // `size` is the only mode, so the virtual display switches to it, the
+        // same way a new one starts in it.
+        let settings = CGVirtualDisplaySettings()
+        settings.hiDPI = 1
+        settings.modes = [CGVirtualDisplayMode(
+            width: UInt32(size.width), height: UInt32(size.height),
+            refreshRate: display.refreshRate > 0 ? display.refreshRate : 60)]
+
+        switch virtuals[id] {
+        case .mirrored(let virtual, _):
+            guard virtual.apply(settings) else { throw .virtualDisplayFailed }
+            virtuals[id] = .mirrored(virtual, size)
+        case .parked(let virtual):
+            // Enabling must complete before the display accepts a mode or a mirror.
+            try DisplayConfiguration.apply { SkyLight.configureEnabled($0, virtual.displayID, true) }
+            try mirror(id, onto: virtual, settings: settings, size: size)
+        case nil:
+            guard let virtual = CGVirtualDisplay(descriptor: Self.descriptor(for: display)) else {
+                throw .virtualDisplayFailed
             }
+            try mirror(id, onto: virtual, settings: settings, size: size)
         }
-        virtualSizes[id] = size
         refresh()
     }
 
-    private func switchVirtual(
-        _ virtual: CGVirtualDisplay, of id: CGDirectDisplayID, to size: DisplaySize, enable: Bool
+    /// Mirrors the panel onto an enabled virtual display, or parks the virtual
+    /// display when that fails.
+    private func mirror(
+        _ id: CGDirectDisplayID, onto virtual: CGVirtualDisplay,
+        settings: CGVirtualDisplaySettings, size: DisplaySize
     ) throws(DisplayError) {
         do throws(DisplayError) {
-            // A parked display is disabled, and enabling must complete before it
-            // accepts a mode or a mirror.
-            if enable {
-                try DisplayConfiguration.apply { SkyLight.configureEnabled($0, virtual.displayID, true) }
-            }
-            guard let mode = Self.hiDPIMode(of: virtual.displayID, size: size) else { throw .modeUnavailable(size) }
-            try DisplayConfiguration.apply { config in
-                let result = CGConfigureDisplayWithDisplayMode(config, virtual.displayID, mode, nil)
-                return result == .success ? CGConfigureDisplayMirrorOfDisplay(config, id, virtual.displayID) : result
-            }
+            guard virtual.apply(settings), virtual.displayID != kCGNullDirectDisplay else { throw .virtualDisplayFailed }
+            try DisplayConfiguration.apply { CGConfigureDisplayMirrorOfDisplay($0, id, virtual.displayID) }
         } catch {
-            if enable { Self.park(virtual) }
+            Self.park(virtual)
+            virtuals[id] = .parked(virtual)
             throw error
         }
+        virtuals[id] = .mirrored(virtual, size)
     }
 
     public func setNative(_ id: CGDirectDisplayID) throws(DisplayError) {
-        guard virtualSizes[id] != nil, let virtual = virtualDisplays[id] else { return }
+        guard case .mirrored(let virtual, _) = virtuals[id] else { return }
         try DisplayConfiguration.apply { config in
             let result = CGConfigureDisplayMirrorOfDisplay(config, id, kCGNullDirectDisplay)
             return result == .success ? SkyLight.configureEnabled(config, virtual.displayID, false) : result
         }
-        virtualSizes[id] = nil
+        virtuals[id] = .parked(virtual)
         refresh()
     }
 
-    /// Restores every scaled display to its own mode. Run before the process exits,
-    /// so panels do not depend on WindowServer cleaning up after it.
-    public func restoreAll() {
-        for id in virtualSizes.keys {
-            try? setNative(id)
+    /// Unmirrors every scaled display in one configuration and changes nothing
+    /// else. Run right before the process exits, which removes the virtual
+    /// displays; unmirroring first keeps panels from depending on WindowServer
+    /// cleaning up after the process.
+    public func unmirrorAllBeforeExit() {
+        let scaled = Array(virtualSizes.keys)
+        guard !scaled.isEmpty else { return }
+        try? DisplayConfiguration.apply { config in
+            for id in scaled {
+                let result = CGConfigureDisplayMirrorOfDisplay(config, id, kCGNullDirectDisplay)
+                guard result == .success else { return result }
+            }
+            return .success
         }
     }
 
-    private static func makeVirtualDisplay(
-        for display: PhysicalDisplay, startingAt size: DisplaySize
-    ) throws(DisplayError) -> CGVirtualDisplay {
-        let sizes = [size] + display.scaledSizes.filter { $0 != size }
+    private static func descriptor(for display: PhysicalDisplay) -> CGVirtualDisplayDescriptor {
+        // Large enough for every offered size, since the display is reused for each.
+        let largest = display.scaledSizes.last ?? display.nativeLogical
         let descriptor = CGVirtualDisplayDescriptor()
         descriptor.name = "\(display.name) (scaled)"
         descriptor.queue = .main
@@ -165,37 +186,20 @@ public final class DisplayManager {
         descriptor.productID = 0x5357
         // Per physical display, so macOS keeps arrangement settings for each apart.
         descriptor.serialNum = display.id
-        descriptor.maxPixelsWide = UInt32(sizes.map(\.width).max()! * 2)
-        descriptor.maxPixelsHigh = UInt32(sizes.map(\.height).max()! * 2)
+        descriptor.maxPixelsWide = UInt32(largest.width * 2)
+        descriptor.maxPixelsHigh = UInt32(largest.height * 2)
         let millimeters = CGDisplayScreenSize(display.id)
         descriptor.sizeInMillimeters = millimeters.width > 0 ? millimeters : CGSize(width: 600, height: 340)
         descriptor.redPrimary = CGPoint(x: 0.68, y: 0.32)
         descriptor.greenPrimary = CGPoint(x: 0.265, y: 0.69)
         descriptor.bluePrimary = CGPoint(x: 0.15, y: 0.06)
         descriptor.whitePoint = CGPoint(x: 0.3127, y: 0.329)
-
-        guard let virtual = CGVirtualDisplay(descriptor: descriptor) else { throw .virtualDisplayFailed }
-        let settings = CGVirtualDisplaySettings()
-        settings.hiDPI = 1
-        let refreshRate = display.refreshRate > 0 ? display.refreshRate : 60
-        settings.modes = sizes.map {
-            CGVirtualDisplayMode(width: UInt32($0.width), height: UInt32($0.height), refreshRate: refreshRate)
-        }
-        guard virtual.apply(settings), virtual.displayID != kCGNullDirectDisplay else { throw .virtualDisplayFailed }
-        return virtual
+        return descriptor
     }
 
     /// Disables an unused virtual display so it is not an empty extra desktop.
     private static func park(_ virtual: CGVirtualDisplay) {
         try? DisplayConfiguration.apply { SkyLight.configureEnabled($0, virtual.displayID, false) }
-    }
-
-    private static func hiDPIMode(of id: CGDirectDisplayID, size: DisplaySize) -> CGDisplayMode? {
-        let options = [kCGDisplayShowDuplicateLowResolutionModes: kCFBooleanTrue] as CFDictionary
-        let modes = CGDisplayCopyAllDisplayModes(id, options) as? [CGDisplayMode] ?? []
-        return modes.first {
-            $0.width == size.width && $0.height == size.height && $0.pixelWidth == size.width * 2
-        }
     }
 
     private static func onlineDisplayIDs() -> [CGDirectDisplayID] {

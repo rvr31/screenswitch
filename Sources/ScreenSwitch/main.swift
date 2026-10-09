@@ -23,7 +23,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
-        manager.restoreAll()
+        manager.unmirrorAllBeforeExit()
     }
 
     func menuWillOpen(_ menu: NSMenu) {
