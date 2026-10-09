@@ -83,7 +83,7 @@ ditto build/ScreenSwitch.app /Applications/ScreenSwitch.app
 
 `./test.sh` runs the unit tests. It adds the swift-testing paths that the command line tools leave out.
 
-`scripts/verify-displays.sh` exercises every operation on your real displays: off, on, scale, native. Screens go dark and flicker for about 30 seconds, so save your work first. Pass the display IDs from `screenswitch-cli status` as arguments; they default to 4 (external) and 1 (built-in).
+`scripts/verify-displays.sh` exercises every operation on your real displays: off, on, scale, native. Screens go dark and flicker for about 30 seconds, so save your work first. Pass the display IDs from `screenswitch-cli status` as arguments; they default to 4 (external) and 1 (built-in). Quit the ScreenSwitch app first. The script stops while the app runs, because the app owns virtual displays and mirrors that the script cannot undo.
 
 A local build reports version 1.0. Set `VERSION` when building to use a different bundle version, for example `VERSION=0.1.4 ./build-app.sh`.
 
