@@ -6,16 +6,15 @@ import Foundation
 enum SkyLight {
     private typealias ConfigureEnabled = @convention(c) (CGDisplayConfigRef, CGDirectDisplayID, Bool) -> CGError
 
-    private static let configureEnabled: ConfigureEnabled? = {
+    private static let configureEnabledSymbol: ConfigureEnabled? = {
         guard let handle = dlopen("/System/Library/PrivateFrameworks/SkyLight.framework/SkyLight", RTLD_NOW),
               let symbol = dlsym(handle, "CGSConfigureDisplayEnabled")
         else { return nil }
         return unsafeBitCast(symbol, to: ConfigureEnabled.self)
     }()
 
-    static func setEnabled(_ id: CGDirectDisplayID, _ enabled: Bool) throws(DisplayError) {
-        guard let configureEnabled else { throw .privateAPIUnavailable("CGSConfigureDisplayEnabled") }
-        try DisplayConfiguration.apply { configureEnabled($0, id, enabled) }
+    static func configureEnabled(_ config: CGDisplayConfigRef, _ id: CGDirectDisplayID, _ enabled: Bool) -> CGError {
+        configureEnabledSymbol?(config, id, enabled) ?? .notImplemented
     }
 }
 
@@ -36,15 +35,16 @@ enum DisplayConfiguration {
 
 public enum DisplayError: Error, CustomStringConvertible {
     case coreGraphics(CGError)
-    case privateAPIUnavailable(String)
+    case modeUnavailable(DisplaySize)
     case virtualDisplayFailed
     case onlyActiveDisplay
     case unknownDisplay(CGDirectDisplayID)
 
     public var description: String {
         switch self {
+        case .coreGraphics(.notImplemented): "a private macOS display API is missing on this macOS version"
         case .coreGraphics(let error): "CoreGraphics error \(error.rawValue)"
-        case .privateAPIUnavailable(let name): "\(name) is not available on this macOS version"
+        case .modeUnavailable(let size): "the virtual display has no \(size) HiDPI mode"
         case .virtualDisplayFailed: "macOS refused to create the virtual display"
         case .onlyActiveDisplay: "this is the only active display"
         case .unknownDisplay(let id): "no display with id \(id)"

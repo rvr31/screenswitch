@@ -50,10 +50,7 @@ public enum MenuModel {
     public static func entries(for manager: DisplayManager) -> [MenuEntry] {
         entries(
             displays: manager.online,
-            virtualSizes: manager.scaling.compactMapValues {
-                if case .virtual(let screen) = $0 { return screen.size }
-                return nil
-            },
+            virtualSizes: manager.virtualSizes,
             turnedOff: manager.turnedOff)
     }
 }

@@ -34,10 +34,7 @@ func displayList(_ get: (UInt32, UnsafeMutablePointer<CGDirectDisplayID>?, Unsaf
         print("    id=\(id) mode=\(mode.width)x\(mode.height) px=\(mode.pixelWidth)x\(mode.pixelHeight) mirrorOf=\(CGDisplayMirrorsDisplay(id)) main=\(CGDisplayIsMain(id) != 0)")
     }
     for display in manager.online {
-        let scaling: String = switch manager.scaling(of: display.id) {
-        case .native: "native"
-        case .virtual(let screen): "virtual \(screen.size)"
-        }
+        let scaling = manager.virtualSizes[display.id].map { "virtual \($0)" } ?? "native"
         print("  \(display.id) \(display.name): native \(display.nativeLogical) (px \(display.nativePixels)), \(scaling)")
     }
     print("  turnedOff=\(manager.turnedOff.map { "\($0.id) \($0.name)" })")
