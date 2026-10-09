@@ -1,4 +1,5 @@
 import CoreGraphics
+import Foundation
 import Testing
 @testable import ScreenSwitchCore
 
@@ -15,9 +16,18 @@ private func entries(
     _ displays: [PhysicalDisplay],
     virtual: [CGDirectDisplayID: DisplaySize] = [:],
     off: [RememberedOff] = [],
-    opensAtLogin: Bool = false
+    opensAtLogin: Bool = false,
+    update: UpdateState? = nil
 ) -> [MenuEntry] {
-    MenuModel.entries(displays: displays, virtualSizes: virtual, turnedOff: off, opensAtLogin: opensAtLogin)
+    MenuModel.entries(displays: displays, virtualSizes: virtual, turnedOff: off, opensAtLogin: opensAtLogin, update: update)
+}
+
+private func entryAboveOpenAtLogin(_ update: UpdateState?) -> MenuEntry? {
+    let all = entries([builtin], update: update)
+    guard let index = all.firstIndex(where: { if case .item("Open at Login", _, _) = $0 { true } else { false } }),
+          index > 0
+    else { return nil }
+    return all[index - 1]
 }
 
 private func slider(for name: String, in entries: [MenuEntry]) -> (steps: [ResolutionStep], selected: Int)? {
@@ -70,4 +80,18 @@ private func slider(for name: String, in entries: [MenuEntry]) -> (steps: [Resol
 @Test func openAtLoginIsCheckedWhenRegistered() {
     #expect(entries([builtin], opensAtLogin: true).contains(.item("Open at Login", action: .toggleOpenAtLogin, checked: true)))
     #expect(entries([builtin]).contains(.item("Open at Login", action: .toggleOpenAtLogin, checked: false)))
+}
+
+@Test func updateItemFollowsTheUpdateState() throws {
+    let version = try #require(Version("0.2.0"))
+    let url = try #require(URL(string: "https://example.com"))
+    let update = AvailableUpdate(version: version, archive: url, checksums: url, page: url)
+    #expect(entryAboveOpenAtLogin(.idle) == .item("Check for Updates…", action: .checkForUpdates))
+    #expect(entryAboveOpenAtLogin(.checking) == .item("Checking for Updates…", action: nil))
+    #expect(entryAboveOpenAtLogin(.available(update)) == .item("Install ScreenSwitch 0.2.0…", action: .installUpdate))
+    #expect(entryAboveOpenAtLogin(.installing(version)) == .item("Installing ScreenSwitch 0.2.0…", action: nil))
+}
+
+@Test func noUpdateItemWithoutAVersion() {
+    #expect(entryAboveOpenAtLogin(nil) == .separator)
 }

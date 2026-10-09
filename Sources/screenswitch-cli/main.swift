@@ -63,7 +63,7 @@ let arity = ["off": 1, "on": 1, "scale": 2, "native": 1, "wait": 1, "sizes": 1]
     let id = operands.first.flatMap { CGDirectDisplayID($0) }
     switch (command, id) {
     case ("status", _): printStatus(manager)
-    case ("menu", _): print(outline(MenuModel.entries(for: manager, opensAtLogin: false)).joined(separator: "\n"))
+    case ("menu", _): print(outline(MenuModel.entries(for: manager, opensAtLogin: false, update: .idle)).joined(separator: "\n"))
     case ("off", let id?): try manager.turnOff(id)
     case ("on", let id?): try manager.turnOn(id)
     case ("native", let id?): try manager.setNative(id)

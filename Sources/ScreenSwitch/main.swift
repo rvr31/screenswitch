@@ -5,6 +5,7 @@ import ServiceManagement
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let manager = DisplayManager()
+    private let updater = Updater()
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
     private var terminationSignal: DispatchSourceSignal?
     private var pending: (MenuAction, String)?
@@ -15,13 +16,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.autoenablesItems = false
         menu.delegate = self
         statusItem.menu = menu
-
         // `kill`/`pkill` should restore scaled displays like Quit does.
         signal(SIGTERM, SIG_IGN)
         let source = DispatchSource.makeSignalSource(signal: SIGTERM, queue: .main)
         source.setEventHandler { MainActor.assumeIsolated { NSApp.terminate(nil) } }
         source.resume()
         terminationSignal = source
+
+        updater?.startChecking()
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -31,7 +33,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func menuWillOpen(_ menu: NSMenu) {
         manager.refresh()
         let opensAtLogin = SMAppService.mainApp.status == .enabled
-        menu.items = MenuModel.entries(for: manager, opensAtLogin: opensAtLogin).map(menuItem)
+        menu.items = MenuModel.entries(for: manager, opensAtLogin: opensAtLogin, update: updater?.state).map(menuItem)
     }
 
     func menuDidClose(_ menu: NSMenu) {
@@ -81,21 +83,44 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func perform(_ action: MenuAction, title: String) {
-        if action == .toggleOpenAtLogin {
-            toggleOpenAtLogin(title)
-            return
-        }
         do throws(DisplayError) {
             switch action {
             case .setNative(let id): try manager.setNative(id)
             case .setVirtual(let id, let size): try manager.setVirtual(id, size: size)
             case .turnOff(let id): try manager.turnOff(id)
             case .turnOn(let id): try manager.turnOn(id)
-            case .toggleOpenAtLogin: break
+            case .checkForUpdates: Task { await checkForUpdates() }
+            case .installUpdate:
+                if case .available(let update) = updater?.state { Task { await install(update) } }
+            case .toggleOpenAtLogin: toggleOpenAtLogin(title)
             case .quit: NSApp.terminate(nil)
             }
         } catch {
             showFailure(title, error.description)
+        }
+    }
+
+    private func checkForUpdates() async {
+        guard let updater else { return }
+        do {
+            guard let update = try await updater.check() else {
+                showAlert("ScreenSwitch \(updater.current) is up to date")
+                return
+            }
+            let choice = showAlert(
+                "ScreenSwitch \(update.version) is available", "You have version \(updater.current).",
+                buttons: ["Install", "Later"])
+            if choice == .alertFirstButtonReturn { await install(update) }
+        } catch {
+            showFailure("Checking for updates", error.localizedDescription)
+        }
+    }
+
+    private func install(_ update: AvailableUpdate) async {
+        do {
+            try await updater?.install(update)
+        } catch {
+            showFailure("Updating to ScreenSwitch \(update.version)", error.localizedDescription)
         }
     }
 
@@ -113,11 +138,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func showFailure(_ title: String, _ message: String) {
+        showAlert("\(title) failed", message)
+    }
+
+    @discardableResult
+    private func showAlert(_ message: String, _ info: String = "", buttons: [String] = []) -> NSApplication.ModalResponse {
         let alert = NSAlert()
-        alert.messageText = "\(title) failed"
-        alert.informativeText = message
+        alert.messageText = message
+        alert.informativeText = info
+        buttons.forEach { alert.addButton(withTitle: $0) }
         NSApp.activate()
-        alert.runModal()
+        return alert.runModal()
     }
 }
 

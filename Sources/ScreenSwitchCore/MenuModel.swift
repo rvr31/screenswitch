@@ -5,6 +5,8 @@ public enum MenuAction: Equatable, Sendable {
     case setVirtual(CGDirectDisplayID, DisplaySize)
     case turnOff(CGDirectDisplayID)
     case turnOn(CGDirectDisplayID)
+    case checkForUpdates
+    case installUpdate
     case toggleOpenAtLogin
     case quit
 }
@@ -35,7 +37,8 @@ public enum MenuModel {
         displays: [PhysicalDisplay],
         virtualSizes: [CGDirectDisplayID: DisplaySize],
         turnedOff: [RememberedOff],
-        opensAtLogin: Bool
+        opensAtLogin: Bool,
+        update: UpdateState?
     ) -> [MenuEntry] {
         var entries: [MenuEntry] = []
         for display in displays {
@@ -52,6 +55,13 @@ public enum MenuModel {
         for off in turnedOff {
             entries += [.display(name: off.name, isOn: false, toggle: .turnOn(off.id)), .separator]
         }
+        switch update {
+        case nil: break
+        case .idle: entries.append(.item("Check for Updates…", action: .checkForUpdates))
+        case .checking: entries.append(.item("Checking for Updates…", action: nil))
+        case .available(let available): entries.append(.item("Install ScreenSwitch \(available.version)…", action: .installUpdate))
+        case .installing(let version): entries.append(.item("Installing ScreenSwitch \(version)…", action: nil))
+        }
         entries += [
             .item("Open at Login", action: .toggleOpenAtLogin, checked: opensAtLogin),
             .item("Quit ScreenSwitch", action: .quit),
@@ -59,12 +69,14 @@ public enum MenuModel {
         return entries
     }
 
+    /// `update` is nil when the running app has no version to compare.
     @MainActor
-    public static func entries(for manager: DisplayManager, opensAtLogin: Bool) -> [MenuEntry] {
+    public static func entries(for manager: DisplayManager, opensAtLogin: Bool, update: UpdateState?) -> [MenuEntry] {
         entries(
             displays: manager.online,
             virtualSizes: manager.virtualSizes,
             turnedOff: manager.turnedOff,
-            opensAtLogin: opensAtLogin)
+            opensAtLogin: opensAtLogin,
+            update: update)
     }
 }
