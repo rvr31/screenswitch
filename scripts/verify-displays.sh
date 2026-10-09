@@ -79,3 +79,13 @@ wait "$SCALER"
 SCALER=
 sleep 3
 observe "native"
+
+# Once a process has turned a display on or off, macOS leaves the next virtual
+# display it creates offline until ScreenSwitch enables it.
+echo "== turn off $BUILTIN, then a new virtual display on $EXTERNAL in the same process"
+"$CLI" off "$BUILTIN" scale "$EXTERNAL" "$SIZE_A" wait 3 status native "$EXTERNAL" &
+SCALER=$!
+wait "$SCALER"
+SCALER=
+sleep 3
+observe "native"
