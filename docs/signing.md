@@ -66,7 +66,7 @@ With `MACOS_CERT_P12` empty, the workflow skips signing and notarization. With t
    rm ~/Desktop/developer-id.p12
    ```
 
-7. Start a release and watch it. A manual run publishes the next patch version, the same as a push to `main`:
+7. Start a release and watch it. A manual run publishes the next patch version, the same as a push to `main` that changes the app:
 
    ```bash
    gh secret list -R rvr31/screenswitch
@@ -90,7 +90,7 @@ With `MACOS_CERT_P12` empty, the workflow skips signing and notarization. With t
 
    `spctl` should print `accepted` and `source=Notarized Developer ID`. Then download the zip in a browser, open the app, and confirm macOS asks at most "downloaded from the internet, open?" instead of blocking it.
 
-9. Remove the quarantine step from Install in `README.md`, since a notarized app no longer needs it. Pushing that change to `main` publishes the next notarized release.
+9. Remove the quarantine step from Install in `README.md`, since a notarized app no longer needs it. A README change does not publish a release.
 
 ## When it fails
 

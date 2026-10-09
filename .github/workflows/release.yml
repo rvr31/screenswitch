@@ -1,11 +1,18 @@
 name: Release
 
-# Every push to main publishes a release. The version is the latest release
-# with the patch number raised by one, starting at v0.1.0. Bump the minor or
-# major by hand with a release named e.g. v0.2.0; the next push continues from it.
+# Every push to main that changes the app publishes a release. Docs, tests and
+# this workflow alone do not; run it by hand from the Actions tab for those.
+# The version is the latest release with the patch number raised by one,
+# starting at v0.1.0. Bump the minor or major by hand with a release named
+# e.g. v0.2.0; the next push continues from it.
 on:
   push:
     branches: [main]
+    paths:
+      - "Sources/**"
+      - "Package.swift"
+      - "Package.resolved"
+      - "build-app.sh"
   workflow_dispatch:
 
 permissions:
