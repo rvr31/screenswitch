@@ -110,8 +110,7 @@ public final class DisplayManager {
         guard display.scaledSizes.contains(size) else { throw .sizeNotOffered(size) }
         // Changing the settings of a live mirrored virtual display leaves its
         // mode as it was (measured on macOS 26), so every size change goes
-        // through the parked state: unmirror and disable, then enable with the
-        // new size as the only mode.
+        // through the parked state.
         if case .mirrored = virtuals[id] { try setNative(id) }
         let settings = CGVirtualDisplaySettings()
         settings.hiDPI = 1
@@ -131,19 +130,16 @@ public final class DisplayManager {
         }
         do throws(DisplayError) {
             guard virtual.apply(settings), virtual.displayID != kCGNullDirectDisplay else { throw .virtualDisplayFailed }
-            // A fresh virtual display lists no modes until a display configuration
-            // has run (measured), so a new one goes through the same enable step
-            // as a parked one.
-            try DisplayConfiguration.apply { SkyLight.configureEnabled($0, virtual.displayID, true) }
-            // WindowServer picks the virtual display's initial mode itself and
-            // may take the 1x variant, matching the panel's current mode, so the
-            // 2x mode is set explicitly in the same change as the mirror.
-            let mode = try Self.hiDPIMode(of: virtual.displayID, size: size)
-            try DisplayConfiguration.apply { config in
-                let result = CGConfigureDisplayWithDisplayMode(config, virtual.displayID, mode, nil)
-                return result == .success ? CGConfigureDisplayMirrorOfDisplay(config, id, virtual.displayID) : result
+            if case .parked = virtuals[id] {
+                try DisplayConfiguration.apply { SkyLight.configureEnabled($0, virtual.displayID, true) }
             }
+            try DisplayConfiguration.apply { CGConfigureDisplayMirrorOfDisplay($0, id, virtual.displayID) }
+            // A fresh virtual display lists no modes until its first configuration
+            // has completed, and WindowServer then starts it in the 1x mode that
+            // matches the panel (measured), so the 2x mode is set afterwards.
+            try Self.ensureHiDPIMode(of: virtual.displayID, size: size)
         } catch {
+            try? DisplayConfiguration.apply { CGConfigureDisplayMirrorOfDisplay($0, id, kCGNullDirectDisplay) }
             Self.park(virtual)
             virtuals[id] = .parked(virtual)
             throw error
@@ -152,20 +148,32 @@ public final class DisplayManager {
         refresh()
     }
 
-    /// The 2x mode for `size`. The mode list of a just-created or just-enabled
-    /// virtual display fills in asynchronously on the descriptor's queue, the
-    /// main queue, so the poll spins the main run loop instead of sleeping.
-    private static func hiDPIMode(of id: CGDirectDisplayID, size: DisplaySize) throws(DisplayError) -> CGDisplayMode {
-        let options = [kCGDisplayShowDuplicateLowResolutionModes: kCFBooleanTrue] as CFDictionary
+    /// Switches the virtual display to the 2x mode for `size` unless it is in it
+    /// already. The mode list fills in asynchronously on the descriptor's queue,
+    /// the main queue, so the poll spins the main run loop instead of sleeping.
+    private static func ensureHiDPIMode(of id: CGDirectDisplayID, size: DisplaySize) throws(DisplayError) {
+        func is2x(_ mode: CGDisplayMode) -> Bool {
+            mode.width == size.width && mode.height == size.height && mode.pixelWidth == size.width * 2
+        }
         var modes: [CGDisplayMode] = []
         for _ in 0..<30 {
-            modes = (CGDisplayCopyAllDisplayModes(id, options) as? [CGDisplayMode]) ?? []
-            if let mode = modes.first(where: {
-                $0.width == size.width && $0.height == size.height && $0.pixelWidth == size.width * 2
-            }) { return mode }
+            if let current = CGDisplayCopyDisplayMode(id), is2x(current) { return }
+            modes = allModes(of: id)
+            if let mode = modes.first(where: is2x) {
+                try DisplayConfiguration.apply { CGConfigureDisplayWithDisplayMode($0, id, mode, nil) }
+                return
+            }
             RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.1))
         }
         throw .hiDPIModeMissing(size, offered: modes.map { "\($0.width)x\($0.height)@\($0.pixelWidth)x\($0.pixelHeight)" })
+    }
+
+    private static func allModes(of id: CGDirectDisplayID) -> [CGDisplayMode] {
+        let options = [kCGDisplayShowDuplicateLowResolutionModes: kCFBooleanTrue] as CFDictionary
+        guard let array = CGDisplayCopyAllDisplayModes(id, options) else { return [] }
+        return (0..<CFArrayGetCount(array)).map {
+            unsafeBitCast(CFArrayGetValueAtIndex(array, $0), to: CGDisplayMode.self)
+        }
     }
 
     public func setNative(_ id: CGDirectDisplayID) throws(DisplayError) {
@@ -243,7 +251,7 @@ public final class DisplayManager {
         // The panel's pixel size comes from its native-flagged mode, so a display
         // running a scaled or 1x mode still offers sizes at the panel's aspect ratio.
         let nativeFlag: UInt32 = 0x0200_0000
-        let modes = (CGDisplayCopyAllDisplayModes(id, nil) as? [CGDisplayMode]) ?? []
+        let modes = allModes(of: id)
         let panel = (modes.filter { $0.ioFlags & nativeFlag != 0 }.max { $0.pixelWidth * $0.pixelHeight < $1.pixelWidth * $1.pixelHeight })
             ?? modes.max { $0.pixelWidth * $0.pixelHeight < $1.pixelWidth * $1.pixelHeight }
             ?? mode

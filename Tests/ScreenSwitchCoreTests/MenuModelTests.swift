@@ -1,3 +1,4 @@
+import CoreGraphics
 import Testing
 @testable import ScreenSwitchCore
 
@@ -10,50 +11,63 @@ private let dell = PhysicalDisplay(
     nativeLogical: DisplaySize(width: 2048, height: 1280),
     nativePixels: DisplaySize(width: 4096, height: 2560), refreshRate: 120)
 
-private func actions(_ entries: [MenuEntry]) -> [MenuAction?] {
-    entries.flatMap { entry -> [MenuAction?] in
-        switch entry {
-        case .item(_, let action, _): [action]
-        case .submenu(_, let children): actions(children)
-        case .header, .separator: []
-        }
-    }
+private func entries(
+    _ displays: [PhysicalDisplay],
+    virtual: [CGDirectDisplayID: DisplaySize] = [:],
+    off: [RememberedOff] = [],
+    opensAtLogin: Bool = false
+) -> [MenuEntry] {
+    MenuModel.entries(displays: displays, virtualSizes: virtual, turnedOff: off, opensAtLogin: opensAtLogin)
 }
 
-private func checked(_ entries: [MenuEntry]) -> [String] {
-    entries.flatMap { entry -> [String] in
-        switch entry {
-        case .item(let title, _, let isChecked): isChecked ? [title] : []
-        case .submenu(_, let children): checked(children)
-        case .header, .separator: []
-        }
-    }
+private func slider(for name: String, in entries: [MenuEntry]) -> (steps: [ResolutionStep], selected: Int)? {
+    for case let .resolution(display, steps, selected) in entries where display == name { return (steps, selected) }
+    return nil
 }
 
-@Test func turnOffIsDisabledForTheOnlyDisplay() {
-    let entries = MenuModel.entries(displays: [builtin], virtualSizes: [:], turnedOff: [])
-    #expect(!actions(entries).contains(.turnOff(1)))
-    #expect(entries.contains(.item("Turn off display", action: nil)))
+@Test func theOnlyDisplayShowsOnWithADisabledSwitch() {
+    #expect(entries([builtin]).contains(.display(name: builtin.name, isOn: true, toggle: nil)))
 }
 
-@Test func eachDisplayCanBeTurnedOffWhenTwoAreActive() {
-    let entries = MenuModel.entries(displays: [builtin, dell], virtualSizes: [:], turnedOff: [])
-    #expect(actions(entries).contains(.turnOff(1)))
-    #expect(actions(entries).contains(.turnOff(4)))
+@Test func eachDisplaySwitchesOffWhenTwoAreActive() {
+    let all = entries([builtin, dell])
+    #expect(all.contains(.display(name: builtin.name, isOn: true, toggle: .turnOff(1))))
+    #expect(all.contains(.display(name: dell.name, isOn: true, toggle: .turnOff(4))))
 }
 
-@Test func activeVirtualSizeIsCheckedInsteadOfNative() {
+@Test func sliderRunsFromNativeToThePanelWidthAndSelectsNative() throws {
+    let (steps, selected) = try #require(slider(for: dell.name, in: entries([builtin, dell])))
+    #expect(steps.map(\.size.width) == [2048, 2304, 2560, 2816, 3072, 3328, 3584, 3840, 4096])
+    #expect(steps[selected] == ResolutionStep(size: dell.nativeLogical, action: .setNative(4)))
+    #expect(steps[selected].title == "2048 × 1280 (Native)")
+    #expect(steps[1].action == .setVirtual(4, DisplaySize(width: 2304, height: 1440)))
+}
+
+@Test func sliderSelectsTheActiveVirtualSize() throws {
     let size = DisplaySize(width: 2304, height: 1440)
-    let entries = MenuModel.entries(displays: [builtin, dell], virtualSizes: [4: size], turnedOff: [])
-    #expect(checked(entries) == ["Native 1800 × 1169", "2304 × 1440"])
-    #expect(actions(entries).contains(.setNative(4)))
+    let (steps, selected) = try #require(slider(for: dell.name, in: entries([builtin, dell], virtual: [4: size])))
+    #expect(steps[selected].size == size)
 }
 
-@Test func rememberedDisplaysOfferTurnOn() {
-    let off = RememberedOff(id: 4, name: "DELL U5226KW")
-    let entries = MenuModel.entries(displays: [builtin], virtualSizes: [:], turnedOff: [off])
-    #expect(entries.contains(.item("Turn on DELL U5226KW", action: .turnOn(4))))
-    #expect(!MenuModel.entries(displays: [builtin], virtualSizes: [:], turnedOff: []).contains {
-        if case .item(let title, _, _) = $0 { title.hasPrefix("Turn on") } else { false }
-    })
+@Test func nativeSortsAmongTheVirtualSizesByWidth() throws {
+    let scaledBuiltin = PhysicalDisplay(
+        id: 1, name: "Built-in Retina Display", isBuiltin: true,
+        nativeLogical: DisplaySize(width: 1800, height: 1169),
+        nativePixels: DisplaySize(width: 3024, height: 1964), refreshRate: 120)
+    let (steps, selected) = try #require(slider(for: scaledBuiltin.name, in: entries([scaledBuiltin])))
+    #expect(steps.map(\.size.width) == [1512, 1640, 1768, 1800, 1896, 2024, 2152, 2280, 2408, 2536])
+    #expect(steps[selected].action == .setNative(1))
+}
+
+@Test func rememberedDisplaysShowOffWithoutASlider() {
+    let off = RememberedOff(id: 4, name: dell.name)
+    let all = entries([builtin], off: [off])
+    #expect(all.contains(.display(name: dell.name, isOn: false, toggle: .turnOn(4))))
+    #expect(slider(for: dell.name, in: all) == nil)
+    #expect(!entries([builtin]).contains { if case .display(_, false, _) = $0 { true } else { false } })
+}
+
+@Test func openAtLoginIsCheckedWhenRegistered() {
+    #expect(entries([builtin], opensAtLogin: true).contains(.item("Open at Login", action: .toggleOpenAtLogin, checked: true)))
+    #expect(entries([builtin]).contains(.item("Open at Login", action: .toggleOpenAtLogin, checked: false)))
 }

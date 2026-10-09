@@ -5,14 +5,28 @@ public enum MenuAction: Equatable, Sendable {
     case setVirtual(CGDirectDisplayID, DisplaySize)
     case turnOff(CGDirectDisplayID)
     case turnOn(CGDirectDisplayID)
+    case toggleOpenAtLogin
     case quit
 }
 
-/// The status menu as data. A nil action renders as a disabled item.
-public indirect enum MenuEntry: Equatable, Sendable {
-    case header(String)
+/// One stop on a display's resolution slider.
+public struct ResolutionStep: Equatable, Sendable {
+    public let size: DisplaySize
+    /// `.setNative` or `.setVirtual`.
+    public let action: MenuAction
+
+    public var title: String {
+        if case .setNative = action { "\(size) (Native)" } else { size.description }
+    }
+}
+
+/// The status menu as data. A nil action renders as a disabled control.
+public enum MenuEntry: Equatable, Sendable {
+    /// A display's name with an on/off switch.
+    case display(name: String, isOn: Bool, toggle: MenuAction?)
+    /// Steps ordered from the largest text to the most space.
+    case resolution(display: String, steps: [ResolutionStep], selected: Int)
     case item(String, action: MenuAction?, checked: Bool = false)
-    case submenu(String, [MenuEntry])
     case separator
 }
 
@@ -20,37 +34,37 @@ public enum MenuModel {
     public static func entries(
         displays: [PhysicalDisplay],
         virtualSizes: [CGDirectDisplayID: DisplaySize],
-        turnedOff: [RememberedOff]
+        turnedOff: [RememberedOff],
+        opensAtLogin: Bool
     ) -> [MenuEntry] {
         var entries: [MenuEntry] = []
         for display in displays {
-            let virtual = virtualSizes[display.id]
-            let resolutions: [MenuEntry] =
-                [.item("Native \(display.nativeLogical)", action: .setNative(display.id), checked: virtual == nil),
-                 .separator,
-                 .header("Virtual HiDPI")]
-                + display.scaledSizes.map {
-                    .item($0.description, action: .setVirtual(display.id, $0), checked: virtual == $0)
-                }
+            let steps = ([ResolutionStep(size: display.nativeLogical, action: .setNative(display.id))]
+                + display.scaledSizes.map { ResolutionStep(size: $0, action: .setVirtual(display.id, $0)) })
+                .sorted { $0.size.width < $1.size.width }
+            let current = virtualSizes[display.id] ?? display.nativeLogical
             entries += [
-                .header(display.name),
-                .submenu("Resolution", resolutions),
-                .item("Turn off display", action: displays.count > 1 ? .turnOff(display.id) : nil),
+                .display(name: display.name, isOn: true, toggle: displays.count > 1 ? .turnOff(display.id) : nil),
+                .resolution(display: display.name, steps: steps, selected: steps.firstIndex { $0.size == current } ?? 0),
+                .separator,
             ]
         }
-        if !turnedOff.isEmpty {
-            entries.append(.separator)
-            entries += turnedOff.map { .item("Turn on \($0.name)", action: .turnOn($0.id)) }
+        for off in turnedOff {
+            entries += [.display(name: off.name, isOn: false, toggle: .turnOn(off.id)), .separator]
         }
-        entries += [.separator, .item("Quit ScreenSwitch", action: .quit)]
+        entries += [
+            .item("Open at Login", action: .toggleOpenAtLogin, checked: opensAtLogin),
+            .item("Quit ScreenSwitch", action: .quit),
+        ]
         return entries
     }
 
     @MainActor
-    public static func entries(for manager: DisplayManager) -> [MenuEntry] {
+    public static func entries(for manager: DisplayManager, opensAtLogin: Bool) -> [MenuEntry] {
         entries(
             displays: manager.online,
             virtualSizes: manager.virtualSizes,
-            turnedOff: manager.turnedOff)
+            turnedOff: manager.turnedOff,
+            opensAtLogin: opensAtLogin)
     }
 }

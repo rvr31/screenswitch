@@ -4,9 +4,10 @@ A macOS menu bar app that turns displays off and on without unplugging them, and
 
 Per display, the menu shows:
 
-- a Resolution submenu with Native and virtual HiDPI sizes from 75% to 125% of the native width, in 128 px steps at the native aspect ratio,
-- "Turn off display", disabled when it is the only active display,
-- "Turn on <name>" for each display ScreenSwitch turned off, kept across restarts.
+- the display name with an on/off switch. The switch is disabled when it is the only active display. A display that ScreenSwitch turned off stays in the menu with its switch off, also after a restart.
+- a resolution slider from the largest text to the most space. Its steps are Native and the virtual HiDPI sizes from half to the full panel width, at the panel's aspect ratio. Dragging shows the size; the display changes when you release the slider.
+
+Below the displays, "Open at Login" starts ScreenSwitch when you log in.
 
 ## Download
 
@@ -39,7 +40,7 @@ ditto build/ScreenSwitch.app /Applications/ScreenSwitch.app
 open /Applications/ScreenSwitch.app
 ```
 
-To start it at login, add it in System Settings > General > Login Items.
+To start it at login, choose "Open at Login" in the menu. It registers the app as a login item with `SMAppService`, so it also shows up in System Settings > General > Login Items. Register it from the copy in `/Applications`: the login item points at the app the menu runs from.
 
 ## How it changes displays
 

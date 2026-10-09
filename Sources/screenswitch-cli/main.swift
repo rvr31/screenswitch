@@ -40,18 +40,18 @@ func displayList(_ get: (UInt32, UnsafeMutablePointer<CGDirectDisplayID>?, Unsaf
     print("  turnedOff=\(manager.turnedOff.map { "\($0.id) \($0.name)" })")
 }
 
-func outline(_ entries: [MenuEntry], depth: Int = 1) -> [String] {
-    entries.flatMap { entry -> [String] in
-        let pad = String(repeating: "  ", count: depth)
+func outline(_ entries: [MenuEntry]) -> [String] {
+    entries.map { entry in
         switch entry {
         case .separator:
-            return [pad + "----"]
-        case let .header(title):
-            return [pad + "[" + title + "]"]
+            "  ----"
+        case let .display(name, isOn, toggle):
+            "  [\(name)]  " + (isOn ? "on" : "off") + (toggle == nil ? "  (switch disabled)" : "")
+        case let .resolution(_, steps, selected):
+            "    " + steps.enumerated().map { $0.offset == selected ? "<\($0.element.title)>" : $0.element.size.description }
+                .joined(separator: " | ")
         case let .item(title, action, checked):
-            return [pad + (checked ? "* " : "  ") + title + (action == nil ? "  (disabled)" : "")]
-        case let .submenu(title, children):
-            return [pad + "  " + title + " >"] + outline(children, depth: depth + 2)
+            "  " + (checked ? "* " : "  ") + title + (action == nil ? "  (disabled)" : "")
         }
     }
 }
@@ -63,7 +63,7 @@ let arity = ["off": 1, "on": 1, "scale": 2, "native": 1, "wait": 1, "sizes": 1]
     let id = operands.first.flatMap { CGDirectDisplayID($0) }
     switch (command, id) {
     case ("status", _): printStatus(manager)
-    case ("menu", _): print(outline(MenuModel.entries(for: manager)).joined(separator: "\n"))
+    case ("menu", _): print(outline(MenuModel.entries(for: manager, opensAtLogin: false)).joined(separator: "\n"))
     case ("off", let id?): try manager.turnOff(id)
     case ("on", let id?): try manager.turnOn(id)
     case ("native", let id?): try manager.setNative(id)
