@@ -24,27 +24,27 @@ concurrency:
 
 jobs:
   release:
+    if: github.ref == 'refs/heads/main'
     runs-on: macos-26
-    env:
-      GH_TOKEN: ${{ github.token }}
-      # Signing and notarization run only when these secrets exist; see docs/signing.md.
-      MACOS_CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
-      MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
-      APPLE_ID: ${{ secrets.APPLE_ID }}
-      APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
-      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+    environment: release
+    timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
 
       - name: Next version
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           LATEST="$(gh release list --exclude-drafts --limit 1 --json tagName --jq '.[0].tagName // ""')"
           if [[ -z "$LATEST" ]]; then
             VERSION=0.1.0
           else
+            [[ "$LATEST" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "Unexpected release tag"; exit 1; }
             IFS=. read -r MAJOR MINOR PATCH <<< "${LATEST#v}"
-            VERSION="$MAJOR.$MINOR.$((PATCH + 1))"
+            VERSION="$MAJOR.$MINOR.$((10#$PATCH + 1))"
           fi
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
           echo "Releasing v$VERSION (previous: ${LATEST:-none})"
@@ -53,11 +53,15 @@ jobs:
         run: swift test
 
       - name: Import Developer ID certificate
-        if: env.MACOS_CERT_P12 != ''
+        env:
+          MACOS_CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
+          MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
         run: |
           set -euo pipefail
+          [[ -n "$MACOS_CERT_P12" && -n "$MACOS_CERT_PASSWORD" ]] || { echo "Signing secrets are missing from the release environment"; exit 1; }
           KEYCHAIN="$RUNNER_TEMP/signing.keychain-db"
           KEYCHAIN_PASSWORD="$(openssl rand -hex 16)"
+          echo "::add-mask::$KEYCHAIN_PASSWORD"
           echo "$MACOS_CERT_P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
           security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
           security set-keychain-settings -lut 21600 "$KEYCHAIN"
@@ -65,7 +69,11 @@ jobs:
           security import "$RUNNER_TEMP/cert.p12" -k "$KEYCHAIN" -P "$MACOS_CERT_PASSWORD" -T /usr/bin/codesign
           rm "$RUNNER_TEMP/cert.p12"
           security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN" > /dev/null
-          security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"')
+          KEYCHAINS=()
+          while IFS= read -r existing_keychain; do
+            KEYCHAINS+=("$existing_keychain")
+          done < <(security list-keychains -d user | sed 's/^[[:space:]]*"//; s/"[[:space:]]*$//')
+          security list-keychains -d user -s "$KEYCHAIN" "${KEYCHAINS[@]}"
           IDENTITY="$(security find-identity -v -p codesigning "$KEYCHAIN" | grep -o '"Developer ID Application: [^"]*"' | head -1 | tr -d '"')"
           [[ -n "$IDENTITY" ]] || { echo "MACOS_CERT_P12 holds no Developer ID Application identity"; exit 1; }
           echo "SIGN_IDENTITY=$IDENTITY" >> "$GITHUB_ENV"
@@ -77,27 +85,31 @@ jobs:
           ./build-app.sh --arch arm64 --arch x86_64
           BIN="$(swift build -c release --arch arm64 --arch x86_64 --show-bin-path)"
           cp "$BIN/screenswitch-cli" build/screenswitch-cli
-          if [[ -n "${SIGN_IDENTITY:-}" ]]; then
-            codesign --force --options runtime --timestamp --sign "$SIGN_IDENTITY" build/screenswitch-cli
-          else
-            codesign --force --sign - build/screenswitch-cli
-          fi
+          codesign --force --options runtime --timestamp --sign "$SIGN_IDENTITY" build/screenswitch-cli
           lipo -info build/ScreenSwitch.app/Contents/MacOS/ScreenSwitch build/screenswitch-cli
 
       - name: Notarize
-        if: env.SIGN_IDENTITY != ''
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           set -euo pipefail
+          [[ -n "$APPLE_ID" && -n "$APPLE_APP_PASSWORD" && -n "$APPLE_TEAM_ID" ]] || { echo "Notarization secrets are missing from the release environment"; exit 1; }
           mkdir -p build/notarize
           cp -R build/ScreenSwitch.app build/screenswitch-cli build/notarize/
           ditto -c -k build/notarize build/notarize.zip
+          SUBMIT_STATUS=0
           xcrun notarytool submit build/notarize.zip \
             --apple-id "$APPLE_ID" --password "$APPLE_APP_PASSWORD" --team-id "$APPLE_TEAM_ID" \
-            --wait --output-format json > build/notarize.json
+            --wait --output-format json > build/notarize.json || SUBMIT_STATUS=$?
           cat build/notarize.json
-          if [[ "$(plutil -extract status raw build/notarize.json)" != Accepted ]]; then
-            xcrun notarytool log "$(plutil -extract id raw build/notarize.json)" \
-              --apple-id "$APPLE_ID" --password "$APPLE_APP_PASSWORD" --team-id "$APPLE_TEAM_ID"
+          if [[ "$SUBMIT_STATUS" -ne 0 || "$(plutil -extract status raw build/notarize.json 2>/dev/null || true)" != Accepted ]]; then
+            SUBMISSION_ID="$(plutil -extract id raw build/notarize.json 2>/dev/null || true)"
+            if [[ -n "$SUBMISSION_ID" ]]; then
+              xcrun notarytool log "$SUBMISSION_ID" \
+                --apple-id "$APPLE_ID" --password "$APPLE_APP_PASSWORD" --team-id "$APPLE_TEAM_ID"
+            fi
             exit 1
           fi
           xcrun stapler staple build/ScreenSwitch.app
@@ -109,13 +121,23 @@ jobs:
           mkdir -p dist
           ditto -c -k --keepParent build/ScreenSwitch.app "dist/ScreenSwitch-$VERSION.zip"
           tar -czf "dist/screenswitch-cli-$VERSION-macos-universal.tar.gz" -C build screenswitch-cli
-          (cd dist && shasum -a 256 * > SHA256SUMS)
+          (cd dist && shasum -a 256 ./* > SHA256SUMS)
           ls -l dist
 
       - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "v$VERSION" \
             --target "$GITHUB_SHA" \
             --title "ScreenSwitch v$VERSION" \
             --generate-notes \
             dist/*
+
+      - name: Remove signing keychain
+        if: always()
+        run: |
+          rm -f "$RUNNER_TEMP/cert.p12"
+          if [[ -f "$RUNNER_TEMP/signing.keychain-db" ]]; then
+            security delete-keychain "$RUNNER_TEMP/signing.keychain-db"
+          fi
