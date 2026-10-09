@@ -20,6 +20,12 @@ jobs:
     runs-on: macos-26
     env:
       GH_TOKEN: ${{ github.token }}
+      # Signing and notarization run only when these secrets exist; see docs/signing.md.
+      MACOS_CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
+      MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
     steps:
       - uses: actions/checkout@v5
 
@@ -39,17 +45,62 @@ jobs:
       - name: Test
         run: swift test
 
+      - name: Import Developer ID certificate
+        if: env.MACOS_CERT_P12 != ''
+        run: |
+          set -euo pipefail
+          KEYCHAIN="$RUNNER_TEMP/signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(openssl rand -hex 16)"
+          echo "$MACOS_CERT_P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security import "$RUNNER_TEMP/cert.p12" -k "$KEYCHAIN" -P "$MACOS_CERT_PASSWORD" -T /usr/bin/codesign
+          rm "$RUNNER_TEMP/cert.p12"
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN" > /dev/null
+          security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"')
+          IDENTITY="$(security find-identity -v -p codesigning "$KEYCHAIN" | grep -o '"Developer ID Application: [^"]*"' | head -1 | tr -d '"')"
+          [[ -n "$IDENTITY" ]] || { echo "MACOS_CERT_P12 holds no Developer ID Application identity"; exit 1; }
+          echo "SIGN_IDENTITY=$IDENTITY" >> "$GITHUB_ENV"
+          echo "Signing as $IDENTITY"
+
       - name: Build
         run: |
           set -euo pipefail
           ./build-app.sh --arch arm64 --arch x86_64
           BIN="$(swift build -c release --arch arm64 --arch x86_64 --show-bin-path)"
-          lipo -info build/ScreenSwitch.app/Contents/MacOS/ScreenSwitch "$BIN/screenswitch-cli"
+          cp "$BIN/screenswitch-cli" build/screenswitch-cli
+          if [[ -n "${SIGN_IDENTITY:-}" ]]; then
+            codesign --force --options runtime --timestamp --sign "$SIGN_IDENTITY" build/screenswitch-cli
+          else
+            codesign --force --sign - build/screenswitch-cli
+          fi
+          lipo -info build/ScreenSwitch.app/Contents/MacOS/ScreenSwitch build/screenswitch-cli
 
+      - name: Notarize
+        if: env.SIGN_IDENTITY != ''
+        run: |
+          set -euo pipefail
+          mkdir -p build/notarize
+          cp -R build/ScreenSwitch.app build/screenswitch-cli build/notarize/
+          ditto -c -k build/notarize build/notarize.zip
+          xcrun notarytool submit build/notarize.zip \
+            --apple-id "$APPLE_ID" --password "$APPLE_APP_PASSWORD" --team-id "$APPLE_TEAM_ID" \
+            --wait --output-format json > build/notarize.json
+          cat build/notarize.json
+          if [[ "$(plutil -extract status raw build/notarize.json)" != Accepted ]]; then
+            xcrun notarytool log "$(plutil -extract id raw build/notarize.json)" \
+              --apple-id "$APPLE_ID" --password "$APPLE_APP_PASSWORD" --team-id "$APPLE_TEAM_ID"
+            exit 1
+          fi
+          xcrun stapler staple build/ScreenSwitch.app
+          spctl --assess --type execute -vv build/ScreenSwitch.app
+
+      - name: Package
+        run: |
+          set -euo pipefail
           mkdir -p dist
           ditto -c -k --keepParent build/ScreenSwitch.app "dist/ScreenSwitch-$VERSION.zip"
-          cp "$BIN/screenswitch-cli" build/screenswitch-cli
-          codesign --force --sign - build/screenswitch-cli
           tar -czf "dist/screenswitch-cli-$VERSION-macos-universal.tar.gz" -C build screenswitch-cli
           (cd dist && shasum -a 256 * > SHA256SUMS)
           ls -l dist
