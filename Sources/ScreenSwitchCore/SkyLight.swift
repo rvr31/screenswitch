@@ -37,6 +37,7 @@ public enum DisplayError: Error, CustomStringConvertible {
     case coreGraphics(CGError)
     case sizeNotOffered(DisplaySize)
     case virtualDisplayFailed
+    case hiDPIModeMissing(DisplaySize, offered: [String])
     case onlyActiveDisplay
     case unknownDisplay(CGDirectDisplayID)
 
@@ -46,6 +47,7 @@ public enum DisplayError: Error, CustomStringConvertible {
         case .coreGraphics(let error): "CoreGraphics error \(error.rawValue)"
         case .sizeNotOffered(let size): "\(size) is not one of the display's virtual sizes"
         case .virtualDisplayFailed: "macOS refused to create the virtual display"
+        case .hiDPIModeMissing(let size, let offered): "the virtual display has no 2x mode for \(size); it offers \(offered)"
         case .onlyActiveDisplay: "this is the only active display"
         case .unknownDisplay(let id): "no display with id \(id)"
         }

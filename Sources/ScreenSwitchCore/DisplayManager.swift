@@ -122,9 +122,7 @@ public final class DisplayManager {
         let virtual: CGVirtualDisplay
         switch virtuals[id] {
         case .mirrored: fatalError("unreachable: setNative parks a mirrored display")
-        case .parked(let parked):
-            virtual = parked
-            try DisplayConfiguration.apply { SkyLight.configureEnabled($0, virtual.displayID, true) }
+        case .parked(let parked): virtual = parked
         case nil:
             guard let created = CGVirtualDisplay(descriptor: Self.descriptor(for: display)) else {
                 throw .virtualDisplayFailed
@@ -133,6 +131,10 @@ public final class DisplayManager {
         }
         do throws(DisplayError) {
             guard virtual.apply(settings), virtual.displayID != kCGNullDirectDisplay else { throw .virtualDisplayFailed }
+            // A fresh virtual display lists no modes until a display configuration
+            // has run (measured), so a new one goes through the same enable step
+            // as a parked one.
+            try DisplayConfiguration.apply { SkyLight.configureEnabled($0, virtual.displayID, true) }
             // WindowServer picks the virtual display's initial mode itself and
             // may take the 1x variant, matching the panel's current mode, so the
             // 2x mode is set explicitly in the same change as the mirror.
@@ -150,17 +152,20 @@ public final class DisplayManager {
         refresh()
     }
 
-    /// The 2x mode for `size`. The mode list of a just-enabled virtual display is
-    /// empty until WindowServer has set the display up, so this polls briefly.
+    /// The 2x mode for `size`. The mode list of a just-created or just-enabled
+    /// virtual display fills in asynchronously on the descriptor's queue, the
+    /// main queue, so the poll spins the main run loop instead of sleeping.
     private static func hiDPIMode(of id: CGDirectDisplayID, size: DisplaySize) throws(DisplayError) -> CGDisplayMode {
+        let options = [kCGDisplayShowDuplicateLowResolutionModes: kCFBooleanTrue] as CFDictionary
+        var modes: [CGDisplayMode] = []
         for _ in 0..<30 {
-            let modes = (CGDisplayCopyAllDisplayModes(id, nil) as? [CGDisplayMode]) ?? []
+            modes = (CGDisplayCopyAllDisplayModes(id, options) as? [CGDisplayMode]) ?? []
             if let mode = modes.first(where: {
                 $0.width == size.width && $0.height == size.height && $0.pixelWidth == size.width * 2
             }) { return mode }
-            usleep(100_000)
+            RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.1))
         }
-        throw .virtualDisplayFailed
+        throw .hiDPIModeMissing(size, offered: modes.map { "\($0.width)x\($0.height)@\($0.pixelWidth)x\($0.pixelHeight)" })
     }
 
     public func setNative(_ id: CGDirectDisplayID) throws(DisplayError) {
