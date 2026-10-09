@@ -10,8 +10,9 @@ public enum MenuAction: Equatable, Sendable {
 
 /// The status menu as data. A nil action renders as a disabled item.
 public indirect enum MenuEntry: Equatable, Sendable {
-    case item(String, action: MenuAction?, checked: Bool = false, indented: Bool = false)
-    case submenu(String, [MenuEntry], indented: Bool = false)
+    case header(String)
+    case item(String, action: MenuAction?, checked: Bool = false)
+    case submenu(String, [MenuEntry])
     case separator
 }
 
@@ -27,14 +28,14 @@ public enum MenuModel {
             let resolutions: [MenuEntry] =
                 [.item("Native \(display.nativeLogical)", action: .setNative(display.id), checked: virtual == nil),
                  .separator,
-                 .item("Virtual HiDPI", action: nil)]
+                 .header("Virtual HiDPI")]
                 + display.scaledSizes.map {
                     .item($0.description, action: .setVirtual(display.id, $0), checked: virtual == $0)
                 }
             entries += [
-                .item(display.name, action: nil),
-                .submenu("Resolution", resolutions, indented: true),
-                .item("Turn off display", action: displays.count > 1 ? .turnOff(display.id) : nil, indented: true),
+                .header(display.name),
+                .submenu("Resolution", resolutions),
+                .item("Turn off display", action: displays.count > 1 ? .turnOff(display.id) : nil),
             ]
         }
         if !turnedOff.isEmpty {

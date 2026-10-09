@@ -13,9 +13,9 @@ private let dell = PhysicalDisplay(
 private func actions(_ entries: [MenuEntry]) -> [MenuAction?] {
     entries.flatMap { entry -> [MenuAction?] in
         switch entry {
-        case .item(_, let action, _, _): [action]
-        case .submenu(_, let children, _): actions(children)
-        case .separator: []
+        case .item(_, let action, _): [action]
+        case .submenu(_, let children): actions(children)
+        case .header, .separator: []
         }
     }
 }
@@ -23,9 +23,9 @@ private func actions(_ entries: [MenuEntry]) -> [MenuAction?] {
 private func checked(_ entries: [MenuEntry]) -> [String] {
     entries.flatMap { entry -> [String] in
         switch entry {
-        case .item(let title, _, let isChecked, _): isChecked ? [title] : []
-        case .submenu(_, let children, _): checked(children)
-        case .separator: []
+        case .item(let title, _, let isChecked): isChecked ? [title] : []
+        case .submenu(_, let children): checked(children)
+        case .header, .separator: []
         }
     }
 }
@@ -33,7 +33,7 @@ private func checked(_ entries: [MenuEntry]) -> [String] {
 @Test func turnOffIsDisabledForTheOnlyDisplay() {
     let entries = MenuModel.entries(displays: [builtin], virtualSizes: [:], turnedOff: [])
     #expect(!actions(entries).contains(.turnOff(1)))
-    #expect(entries.contains(.item("Turn off display", action: nil, indented: true)))
+    #expect(entries.contains(.item("Turn off display", action: nil)))
 }
 
 @Test func eachDisplayCanBeTurnedOffWhenTwoAreActive() {
@@ -54,6 +54,6 @@ private func checked(_ entries: [MenuEntry]) -> [String] {
     let entries = MenuModel.entries(displays: [builtin], virtualSizes: [:], turnedOff: [off])
     #expect(entries.contains(.item("Turn on DELL U5226KW", action: .turnOn(4))))
     #expect(!MenuModel.entries(displays: [builtin], virtualSizes: [:], turnedOff: []).contains {
-        if case .item(let title, _, _, _) = $0 { title.hasPrefix("Turn on") } else { false }
+        if case .item(let title, _, _) = $0 { title.hasPrefix("Turn on") } else { false }
     })
 }

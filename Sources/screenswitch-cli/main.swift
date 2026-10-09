@@ -49,12 +49,12 @@ func outline(_ entries: [MenuEntry], depth: Int = 1) -> [String] {
         switch entry {
         case .separator:
             return [pad + "----"]
-        case let .item(title, action, checked, indented):
-            let mark = checked ? "* " : ""
-            let state = action == nil ? "  [disabled]" : ""
-            return [pad + (indented ? "  " : "") + mark + title + state]
-        case let .submenu(title, children, indented):
-            return [pad + (indented ? "  " : "") + title + " >"] + outline(children, depth: depth + 2)
+        case let .header(title):
+            return [pad + "[" + title + "]"]
+        case let .item(title, action, checked):
+            return [pad + (checked ? "* " : "  ") + title + (action == nil ? "  (disabled)" : "")]
+        case let .submenu(title, children):
+            return [pad + "  " + title + " >"] + outline(children, depth: depth + 2)
         }
     }
 }
