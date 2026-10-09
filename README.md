@@ -85,6 +85,8 @@ ditto build/ScreenSwitch.app /Applications/ScreenSwitch.app
 
 `scripts/verify-displays.sh` exercises every operation on your real displays: off, on, scale, native. Screens go dark and flicker for about 30 seconds, so save your work first. Pass the display IDs from `screenswitch-cli status` as arguments; they default to 4 (external) and 1 (built-in). Quit the ScreenSwitch app first. The script stops while the app runs, because the app owns virtual displays and mirrors that the script cannot undo.
 
+`scripts/verify-profiles.sh` checks profile switching the same way and takes the same arguments. It saves the starting setup and three test profiles (both displays, built-in off, external scaled), switches between them, and applies the last one twice to show that the second apply changes nothing. The exit trap returns to the starting setup and deletes the `verify-*` profiles.
+
 A local build reports version 1.0. Set `VERSION` when building to use a different bundle version, for example `VERSION=0.1.4 ./build-app.sh`.
 
 ## Releases
