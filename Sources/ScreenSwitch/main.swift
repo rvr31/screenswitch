@@ -5,6 +5,7 @@ import ServiceManagement
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let manager = DisplayManager()
+    private lazy var profiles = ProfileManager(manager)
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
     private var terminationSignal: DispatchSourceSignal?
     private var pending: (MenuAction, String)?
@@ -22,6 +23,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         source.setEventHandler { MainActor.assumeIsolated { NSApp.terminate(nil) } }
         source.resume()
         terminationSignal = source
+
+        profiles.onError = { [weak self] title, error in self?.showFailure(title, error.description) }
+        manager.onReconfigure = { [weak self] in self?.profiles.reconcile() }
+        profiles.reconcile()
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -31,7 +36,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func menuWillOpen(_ menu: NSMenu) {
         manager.refresh()
         let opensAtLogin = SMAppService.mainApp.status == .enabled
-        menu.items = MenuModel.entries(for: manager, opensAtLogin: opensAtLogin).map(menuItem)
+        menu.items = MenuModel.entries(for: profiles, opensAtLogin: opensAtLogin).map(menuItem)
     }
 
     func menuDidClose(_ menu: NSMenu) {
@@ -45,12 +50,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         switch entry {
         case .separator:
             return .separator()
+        case let .header(title):
+            return .sectionHeader(title: title)
         case let .item(title, action, checked):
             let item = NSMenuItem(title: title, action: #selector(choose(_:)), keyEquivalent: action == .quit ? "q" : "")
             item.target = self
             item.representedObject = action
             item.isEnabled = action != nil
             item.state = checked ? .on : .off
+            return item
+        case let .submenu(title, children):
+            let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
+            let submenu = NSMenu(title: title)
+            submenu.autoenablesItems = false
+            submenu.items = children.map(menuItem)
+            item.submenu = submenu
             return item
         case let .display(name, isOn, toggle):
             let item = NSMenuItem()
@@ -91,6 +105,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             case .setVirtual(let id, let size): try manager.setVirtual(id, size: size)
             case .turnOff(let id): try manager.turnOff(id)
             case .turnOn(let id): try manager.turnOn(id)
+            case .applyProfile(let name): try profiles.apply(name: name)
+            case .saveProfile: saveProfile()
+            case .deleteProfile(let name): profiles.delete(name: name)
             case .toggleOpenAtLogin: break
             case .quit: NSApp.terminate(nil)
             }
@@ -110,6 +127,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         } catch {
             showFailure(title, error.localizedDescription)
         }
+    }
+
+    private func saveProfile() {
+        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 300, height: 24))
+        field.stringValue = (manager.online.map(\.name) + manager.turnedOff.map(\.name)).joined(separator: " + ")
+        let alert = NSAlert()
+        alert.messageText = "Save Current Setup as Profile"
+        alert.informativeText = "ScreenSwitch switches to this profile when the same displays are connected. Saving under an existing name replaces that profile."
+        alert.accessoryView = field
+        alert.addButton(withTitle: "Save")
+        alert.addButton(withTitle: "Cancel")
+        alert.window.initialFirstResponder = field
+        NSApp.activate()
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        let name = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty else { return }
+        profiles.saveCurrent(name: name)
     }
 
     private func showFailure(_ title: String, _ message: String) {

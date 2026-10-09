@@ -15,6 +15,10 @@ let usage = """
       off ID | on ID    turn a display off or on
       scale ID WxH      mirror display ID onto a virtual HiDPI display of WxH
       native ID         back to the display's own mode
+      profiles          saved profiles with their targets, the active one marked *
+      save NAME         save the current setup as profile NAME, replacing one of that name
+      apply NAME        switch to profile NAME (the CLI never switches on its own)
+      delete NAME       delete profile NAME
       wait SECONDS      keep the process (and its virtual displays) alive
       crash             exit immediately, skipping unmirrorAllBeforeExit()
     """
@@ -35,35 +39,61 @@ func displayList(_ get: (UInt32, UnsafeMutablePointer<CGDirectDisplayID>?, Unsaf
     }
     for display in manager.online {
         let scaling = manager.virtualSizes[display.id].map { "virtual \($0)" } ?? "native"
-        print("  \(display.id) \(display.name): native \(display.nativeLogical) (px \(display.nativePixels)), \(scaling)")
+        print("  \(display.id) \(display.name) [\(display.key)]: native \(display.nativeLogical) (px \(display.nativePixels)), \(scaling)")
     }
-    print("  turnedOff=\(manager.turnedOff.map { "\($0.id) \($0.name)" })")
+    print("  turnedOff=\(manager.turnedOff.map { "\($0.id) \($0.name) [\($0.key)]" })")
 }
 
-func outline(_ entries: [MenuEntry]) -> [String] {
-    entries.map { entry in
+@MainActor func printProfiles(_ profiles: ProfileManager) {
+    let manager = profiles.displays
+    func name(_ key: DisplayKey) -> String {
+        manager.online.first { $0.key == key }?.name ?? manager.turnedOff.first { $0.key == key }?.name ?? key.description
+    }
+    let active = profiles.active?.name
+    for profile in profiles.profiles.sorted(by: { $0.name.localizedStandardCompare($1.name) == .orderedAscending }) {
+        print("  " + (profile.name == active ? "* " : "  ") + profile.name)
+        for (key, target) in profile.targets.sorted(by: { $0.key < $1.key }) {
+            print("      \(name(key)) [\(key)]: \(target)")
+        }
+    }
+    print("  connected=\(manager.connected.sorted().map(name))")
+}
+
+func outline(_ entries: [MenuEntry], indent: String = "  ") -> [String] {
+    entries.flatMap { entry in
         switch entry {
         case .separator:
-            "  ----"
+            [indent + "----"]
+        case let .header(title):
+            [indent + title + ":"]
         case let .display(name, isOn, toggle):
-            "  [\(name)]  " + (isOn ? "on" : "off") + (toggle == nil ? "  (switch disabled)" : "")
+            [indent + "[\(name)]  " + (isOn ? "on" : "off") + (toggle == nil ? "  (switch disabled)" : "")]
         case let .resolution(_, steps, selected):
-            "    " + steps.enumerated().map { $0.offset == selected ? "<\($0.element.title)>" : $0.element.size.description }
-                .joined(separator: " | ")
+            [indent + "  " + steps.enumerated().map { $0.offset == selected ? "<\($0.element.title)>" : $0.element.size.description }
+                .joined(separator: " | ")]
         case let .item(title, action, checked):
-            "  " + (checked ? "* " : "  ") + title + (action == nil ? "  (disabled)" : "")
+            [indent + (checked ? "* " : "  ") + title + (action == nil ? "  (disabled)" : "")]
+        case let .submenu(title, children):
+            [indent + "  " + title + " >"] + outline(children, indent: indent + "    ")
         }
     }
 }
 
-let arity = ["off": 1, "on": 1, "scale": 2, "native": 1, "wait": 1, "sizes": 1]
+let arity = ["off": 1, "on": 1, "scale": 2, "native": 1, "wait": 1, "sizes": 1, "save": 1, "apply": 1, "delete": 1]
 
 /// Returns false when the command or its operands are not understood.
-@MainActor func execute(_ command: String, _ operands: [String], on manager: DisplayManager) throws(DisplayError) -> Bool {
+@MainActor func execute(_ command: String, _ operands: [String], on profiles: ProfileManager) throws(DisplayError) -> Bool {
+    let manager = profiles.displays
     let id = operands.first.flatMap { CGDirectDisplayID($0) }
     switch (command, id) {
     case ("status", _): printStatus(manager)
-    case ("menu", _): print(outline(MenuModel.entries(for: manager, opensAtLogin: false)).joined(separator: "\n"))
+    case ("menu", _): print(outline(MenuModel.entries(for: profiles, opensAtLogin: false)).joined(separator: "\n"))
+    case ("profiles", _): printProfiles(profiles)
+    case ("save", _): profiles.saveCurrent(name: operands[0])
+    case ("apply", _): try profiles.apply(name: operands[0])
+    case ("delete", _):
+        guard profiles.profiles.contains(where: { $0.name == operands[0] }) else { throw .unknownProfile(operands[0]) }
+        profiles.delete(name: operands[0])
     case ("off", let id?): try manager.turnOff(id)
     case ("on", let id?): try manager.turnOn(id)
     case ("native", let id?): try manager.setNative(id)
@@ -85,6 +115,7 @@ let arity = ["off": 1, "on": 1, "scale": 2, "native": 1, "wait": 1, "sizes": 1]
 
 @MainActor func run(_ arguments: [String]) -> Int32 {
     let manager = DisplayManager()
+    let profiles = ProfileManager(manager)
     defer { manager.unmirrorAllBeforeExit() }
     var args = arguments[...]
     if args.isEmpty { print(usage); return 2 }
@@ -96,7 +127,7 @@ let arity = ["off": 1, "on": 1, "scale": 2, "native": 1, "wait": 1, "sizes": 1]
         print(([">", command] + operands).joined(separator: " "))
         do {
             let understood = try autoreleasepool { () throws(DisplayError) in
-                try execute(command, operands, on: manager)
+                try execute(command, operands, on: profiles)
             }
             guard understood else { print(usage); return 2 }
         } catch {

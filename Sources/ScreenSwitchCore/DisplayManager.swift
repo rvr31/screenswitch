@@ -7,7 +7,12 @@ import PrivateDisplay
 public final class DisplayManager {
     public private(set) var online: [PhysicalDisplay] = []
     public private(set) var turnedOff: [RememberedOff] = [] {
-        didSet { defaults.set(try? JSONEncoder().encode(turnedOff), forKey: Self.turnedOffKey) }
+        // Every refresh runs removeAll, and the app and the CLI share this key,
+        // so writing an unchanged list would overwrite another process's record.
+        didSet {
+            guard turnedOff != oldValue else { return }
+            defaults.set(try? JSONEncoder().encode(turnedOff), forKey: Self.turnedOffKey)
+        }
     }
 
     /// Each physical display gets one virtual display, created on first use and
@@ -26,10 +31,28 @@ public final class DisplayManager {
         virtuals.compactMapValues { if case .mirrored(_, let size) = $0 { size } else { nil } }
     }
 
+    /// The state of every connected display: online ones and the ones turned off here.
+    public var current: [DisplayKey: DisplayTarget] {
+        let online = online.map { display in
+            (display.key, virtualSizes[display.id].map(DisplayTarget.virtual) ?? .native)
+        }
+        let off = turnedOff.map { ($0.key, DisplayTarget.off) }
+        return Dictionary(online + off, uniquingKeysWith: { first, _ in first })
+    }
+
+    public var connected: Set<DisplayKey> { Set(current.keys) }
+
+    public func id(for key: DisplayKey) -> CGDirectDisplayID? {
+        online.first { $0.key == key }?.id ?? turnedOff.first { $0.key == key }?.id
+    }
+
+    /// Runs after the refresh that follows each display reconfiguration.
+    public var onReconfigure: (@MainActor () -> Void)?
+
     /// NSScreen names lag behind CoreGraphics in a process that is not running
     /// an app event loop, and a disabled or mirrored display has no NSScreen.
     private var knownNames: [CGDirectDisplayID: String] = [:]
-    private let defaults: UserDefaults
+    public let defaults: UserDefaults
     private static let defaultsDomain = "nl.vanraan.screenswitch"
     private static let turnedOffKey = "turnedOff"
     private static let virtualVendorID: UInt32 = 0x5353
@@ -49,7 +72,10 @@ public final class DisplayManager {
         CGDisplayRegisterReconfigurationCallback({ _, flags, userInfo in
             guard !flags.contains(.beginConfigurationFlag), let userInfo else { return }
             let manager = Unmanaged<DisplayManager>.fromOpaque(userInfo).takeUnretainedValue()
-            Task { @MainActor in manager.refresh() }
+            Task { @MainActor in
+                manager.refresh()
+                manager.onReconfigure?()
+            }
         }, Unmanaged.passUnretained(self).toOpaque())
     }
 
@@ -92,7 +118,7 @@ public final class DisplayManager {
         // A disabled display vanishes from both the active and the online display
         // lists, so this record is the only way to find it again to turn it on.
         turnedOff.removeAll { $0.id == id }
-        turnedOff.append(RememberedOff(id: id, name: display.name))
+        turnedOff.append(RememberedOff(id: id, name: display.name, key: display.key))
         refresh()
     }
 
@@ -100,6 +126,19 @@ public final class DisplayManager {
         try DisplayConfiguration.apply { SkyLight.configureEnabled($0, id, true) }
         turnedOff.removeAll { $0.id == id }
         refresh()
+    }
+
+    /// With no display online, nothing shows the menu's "Turn on" items, as when
+    /// the only active display is unplugged while the others are turned off.
+    /// Turns every remembered display on, built-in first. Does nothing when
+    /// macOS already brought one back.
+    public func turnOnRememberedIfNoneOnline() throws(DisplayError) {
+        guard online.isEmpty, !turnedOff.isEmpty else { return }
+        var failure: DisplayError?
+        for remembered in turnedOff.sorted(by: { CGDisplayIsBuiltin($0.id) > CGDisplayIsBuiltin($1.id) }) {
+            do { try turnOn(remembered.id) } catch { failure = error }
+        }
+        if online.isEmpty, let failure { throw failure }
     }
 
     /// Mirrors the display onto a virtual HiDPI display at `size`, so the GPU
@@ -130,8 +169,13 @@ public final class DisplayManager {
         }
         do throws(DisplayError) {
             guard virtual.apply(settings), virtual.displayID != kCGNullDirectDisplay else { throw .virtualDisplayFailed }
-            if case .parked = virtuals[id] {
-                try DisplayConfiguration.apply { SkyLight.configureEnabled($0, virtual.displayID, true) }
+            // A parked display is disabled, and once this process has turned any
+            // display on or off, macOS also leaves a new virtual display offline.
+            // The enable call then reports kCGErrorFailure even though it brings
+            // the display online (measured on macOS 26), so the online list decides.
+            if !Self.onlineDisplayIDs().contains(virtual.displayID) {
+                try? DisplayConfiguration.apply { SkyLight.configureEnabled($0, virtual.displayID, true) }
+                guard Self.onlineDisplayIDs().contains(virtual.displayID) else { throw .virtualDisplayFailed }
             }
             try DisplayConfiguration.apply { CGConfigureDisplayMirrorOfDisplay($0, id, virtual.displayID) }
             // A fresh virtual display lists no modes until its first configuration
@@ -257,6 +301,7 @@ public final class DisplayManager {
             ?? mode
         return PhysicalDisplay(
             id: id,
+            key: DisplayKey(id),
             name: name ?? (isBuiltin ? "Built-in Display" : "Display \(id)"),
             isBuiltin: isBuiltin,
             nativeLogical: DisplaySize(width: mode.width, height: mode.height),

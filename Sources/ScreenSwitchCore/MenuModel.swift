@@ -1,10 +1,14 @@
 import CoreGraphics
+import Foundation
 
 public enum MenuAction: Equatable, Sendable {
     case setNative(CGDirectDisplayID)
     case setVirtual(CGDirectDisplayID, DisplaySize)
     case turnOff(CGDirectDisplayID)
     case turnOn(CGDirectDisplayID)
+    case applyProfile(String)
+    case saveProfile
+    case deleteProfile(String)
     case toggleOpenAtLogin
     case quit
 }
@@ -26,7 +30,9 @@ public enum MenuEntry: Equatable, Sendable {
     case display(name: String, isOn: Bool, toggle: MenuAction?)
     /// Steps ordered from the largest text to the most space.
     case resolution(display: String, steps: [ResolutionStep], selected: Int)
+    case header(String)
     case item(String, action: MenuAction?, checked: Bool = false)
+    case submenu(String, [MenuEntry])
     case separator
 }
 
@@ -35,6 +41,8 @@ public enum MenuModel {
         displays: [PhysicalDisplay],
         virtualSizes: [CGDirectDisplayID: DisplaySize],
         turnedOff: [RememberedOff],
+        profiles: [Profile],
+        activeProfile: String?,
         opensAtLogin: Bool
     ) -> [MenuEntry] {
         var entries: [MenuEntry] = []
@@ -52,7 +60,15 @@ public enum MenuModel {
         for off in turnedOff {
             entries += [.display(name: off.name, isOn: false, toggle: .turnOn(off.id)), .separator]
         }
+        let names = profiles.map(\.name).sorted { $0.localizedStandardCompare($1) == .orderedAscending }
+        entries.append(.header("Profiles"))
+        entries += names.map { .item($0, action: .applyProfile($0), checked: $0 == activeProfile) }
+        entries.append(.item("Save Current Setup as Profile…", action: .saveProfile))
+        if !names.isEmpty {
+            entries.append(.submenu("Delete Profile", names.map { .item($0, action: .deleteProfile($0)) }))
+        }
         entries += [
+            .separator,
             .item("Open at Login", action: .toggleOpenAtLogin, checked: opensAtLogin),
             .item("Quit ScreenSwitch", action: .quit),
         ]
@@ -60,11 +76,13 @@ public enum MenuModel {
     }
 
     @MainActor
-    public static func entries(for manager: DisplayManager, opensAtLogin: Bool) -> [MenuEntry] {
+    public static func entries(for profiles: ProfileManager, opensAtLogin: Bool) -> [MenuEntry] {
         entries(
-            displays: manager.online,
-            virtualSizes: manager.virtualSizes,
-            turnedOff: manager.turnedOff,
+            displays: profiles.displays.online,
+            virtualSizes: profiles.displays.virtualSizes,
+            turnedOff: profiles.displays.turnedOff,
+            profiles: profiles.profiles,
+            activeProfile: profiles.active?.name,
             opensAtLogin: opensAtLogin)
     }
 }

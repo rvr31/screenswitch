@@ -6,6 +6,12 @@
 # SCALE_ONLY=1 skips the off/on steps and only runs the virtual-scaling pass.
 set -eu
 cd "$(dirname "$0")/.."
+# A running app owns its own virtual displays and mirrors, which this script
+# cannot see or undo.
+if pgrep -f "ScreenSwitch.app/Contents/MacOS/ScreenSwitch" >/dev/null; then
+    echo "Quit the ScreenSwitch app first." >&2
+    exit 1
+fi
 EXTERNAL=${1:-4}
 BUILTIN=${2:-1}
 swift build -c release --product screenswitch-cli >/dev/null
@@ -68,6 +74,16 @@ observe "before"
     native "$EXTERNAL" wait 3 status \
     scale "$EXTERNAL" "$SIZE_A" wait 3 status \
     native "$EXTERNAL" &
+SCALER=$!
+wait "$SCALER"
+SCALER=
+sleep 3
+observe "native"
+
+# Once a process has turned a display on or off, macOS leaves the next virtual
+# display it creates offline until ScreenSwitch enables it.
+echo "== turn off $BUILTIN, then a new virtual display on $EXTERNAL in the same process"
+"$CLI" off "$BUILTIN" scale "$EXTERNAL" "$SIZE_A" wait 3 status native "$EXTERNAL" &
 SCALER=$!
 wait "$SCALER"
 SCALER=

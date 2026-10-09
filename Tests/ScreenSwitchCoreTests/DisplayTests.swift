@@ -1,9 +1,10 @@
+import Foundation
 import Testing
 @testable import ScreenSwitchCore
 
 private func display(_ width: Int, _ height: Int, pixels: (Int, Int)) -> PhysicalDisplay {
     PhysicalDisplay(
-        id: 1, name: "Test", isBuiltin: false,
+        id: 1, key: DisplayKey(vendor: 1, model: 1, serial: 1), name: "Test", isBuiltin: false,
         nativeLogical: DisplaySize(width: width, height: height),
         nativePixels: DisplaySize(width: pixels.0, height: pixels.1),
         refreshRate: 60)
@@ -30,4 +31,10 @@ private func display(_ width: Int, _ height: Int, pixels: (Int, Int)) -> Physica
     let sizes = display(1800, 1169, pixels: (3024, 1964)).scaledSizes
     #expect(sizes.map(\.width) == [1512, 1640, 1768, 1896, 2024, 2152, 2280, 2408, 2536])
     #expect(sizes.first == DisplaySize(width: 1512, height: 982))
+}
+
+@Test func rememberedOffSavedBeforeProfilesTakesItsKeyFromTheDisplayID() throws {
+    let saved = #"[{"name":"Built-in Retina Display","id":1}]"#.data(using: .utf8)!
+    let decoded = try JSONDecoder().decode([RememberedOff].self, from: saved)
+    #expect(decoded == [RememberedOff(id: 1, name: "Built-in Retina Display", key: DisplayKey(1))])
 }

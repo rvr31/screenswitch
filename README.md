@@ -16,6 +16,7 @@ macOS has no switch for a connected display. You unplug it or close the lid. And
 
 - **Switch a display off and on.** The display stays connected and keeps its place in the arrangement. A display that is off stays in the menu, also after a restart, so you can switch it back on.
 - **Pick any scaled size.** Each display gets a slider from the largest text to the most space, in eight HiDPI steps between half the panel width and the full panel width. Native is one of the stops. Drag to see the size, release to apply.
+- **Switch between profiles.** Save the current setup under a name and return to it with one click. ScreenSwitch also switches on its own when you connect or unplug a display.
 - **Open at Login.** One menu item registers ScreenSwitch as a login item.
 
 ## Install
@@ -32,6 +33,16 @@ Choose "Open at Login" from the copy in `/Applications`. The login item points a
 
 Download a newer version from the [latest release](https://github.com/rvr31/screenswitch/releases/latest). Quit ScreenSwitch, replace the copy in `/Applications`, and open it again. The app does not include an automatic updater.
 
+## Profiles
+
+A profile stores a target for each connected display: off, native, or a scaled size. Choose "Save Current Setup as Profile…" to save one, and choose a profile in the menu to switch to it. Saving under an existing name replaces that profile. The menu checks the profile that matches the current setup.
+
+ScreenSwitch also switches on its own, at launch and whenever the set of connected displays changes. It picks the profile saved for exactly those displays, and the one you applied last if several match. Scaled sizes end when ScreenSwitch quits, so the switch at launch brings them back after a login. ScreenSwitch recognizes a display by vendor, model and serial number, because macOS gives a display a new ID on another port or after a reconnect.
+
+A display that ScreenSwitch turned off counts as connected until you turn it on again. macOS hides a disabled display, so ScreenSwitch cannot tell when you unplug it.
+
+When no display is on, ScreenSwitch turns the displays it switched off back on, built-in first. This covers unplugging the only active display while the built-in one is off, with or without profiles.
+
 ## Command line
 
 Each release also ships `screenswitch-cli`, which drives the same code without the menu bar. Commands run in order in one process:
@@ -41,9 +52,11 @@ screenswitch-cli status                  # displays, their modes and scaling sta
 screenswitch-cli off 4 wait 3 on 4       # switch display 4 off, wait, switch it on
 screenswitch-cli scale 4 2304x1440       # scaled size, held until the process exits
 screenswitch-cli sizes 4                 # the sizes the slider offers for display 4
+screenswitch-cli save Desk profiles      # save the current setup as "Desk", list the profiles
+screenswitch-cli apply Desk              # switch to "Desk", scaled sizes end with the process
 ```
 
-Run `screenswitch-cli` without arguments for the full list. `status` only reads, the others change your displays.
+Run `screenswitch-cli` without arguments for the full list. `status`, `sizes` and `profiles` only read. `save` and `delete` change the saved profiles, the others change your displays. The CLI never switches profiles on its own.
 
 ## How it works
 
@@ -70,7 +83,9 @@ ditto build/ScreenSwitch.app /Applications/ScreenSwitch.app
 
 `./test.sh` runs the unit tests. It adds the swift-testing paths that the command line tools leave out.
 
-`scripts/verify-displays.sh` exercises every operation on your real displays: off, on, scale, native. Screens go dark and flicker for about 30 seconds, so save your work first. Pass the display IDs from `screenswitch-cli status` as arguments; they default to 4 (external) and 1 (built-in).
+`scripts/verify-displays.sh` exercises every operation on your real displays: off, on, scale, native. Screens go dark and flicker for about 30 seconds, so save your work first. Pass the display IDs from `screenswitch-cli status` as arguments; they default to 4 (external) and 1 (built-in). Quit the ScreenSwitch app first. The script stops while the app runs, because the app owns virtual displays and mirrors that the script cannot undo.
+
+`scripts/verify-profiles.sh` checks profile switching the same way and takes the same arguments. It saves the starting setup and three test profiles (both displays, built-in off, external scaled), switches between them, and applies the last one twice to show that the second apply changes nothing. The exit trap returns to the starting setup and deletes the `verify-*` profiles.
 
 A local build reports version 1.0. Set `VERSION` when building to use a different bundle version, for example `VERSION=0.1.4 ./build-app.sh`.
 
