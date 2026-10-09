@@ -40,6 +40,8 @@ public enum DisplayError: Error, CustomStringConvertible {
     case hiDPIModeMissing(DisplaySize, offered: [String])
     case onlyActiveDisplay
     case unknownDisplay(CGDirectDisplayID)
+    case unknownProfile(String)
+    case displayNotConnected(DisplayKey)
 
     public var description: String {
         switch self {
@@ -50,6 +52,8 @@ public enum DisplayError: Error, CustomStringConvertible {
         case .hiDPIModeMissing(let size, let offered): "the virtual display has no 2x mode for \(size); it offers \(offered)"
         case .onlyActiveDisplay: "this is the only active display"
         case .unknownDisplay(let id): "no display with id \(id)"
+        case .unknownProfile(let name): "no profile named \(name)"
+        case .displayNotConnected(let key): "display \(key) is not connected"
         }
     }
 }
