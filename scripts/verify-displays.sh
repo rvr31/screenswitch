@@ -1,5 +1,5 @@
 #!/bin/sh
-# One pass over every display operation on the real displays, about 30 seconds.
+# One pass over every display operation on the real displays, about 45 seconds.
 # Screens go dark and flicker while it runs. Whatever fails, the exit trap
 # turns both displays back on and drops the virtual display.
 # Usage: scripts/verify-displays.sh [EXTERNAL_ID] [BUILTIN_ID]
@@ -56,12 +56,14 @@ step "turn on $EXTERNAL" on "$EXTERNAL"
 step "turn off $BUILTIN" off "$BUILTIN"
 step "turn on $BUILTIN" on "$BUILTIN"
 
-echo "== virtual 2304x1440 on $EXTERNAL, then native"
+echo "== virtual on $EXTERNAL: 2304x1440, resize to 1920x1200, native, 2304x1440 again, native"
 observe "before"
-"$CLI" scale "$EXTERNAL" 2304x1440 wait 5 native "$EXTERNAL" &
+"$CLI" scale "$EXTERNAL" 2304x1440 wait 3 status \
+    scale "$EXTERNAL" 1920x1200 wait 3 status \
+    native "$EXTERNAL" wait 3 status \
+    scale "$EXTERNAL" 2304x1440 wait 3 status \
+    native "$EXTERNAL" &
 SCALER=$!
-sleep 3
-observe "virtual 2304x1440"
 wait "$SCALER"
 SCALER=
 sleep 3
