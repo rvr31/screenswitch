@@ -51,6 +51,13 @@ public final class DisplayManager {
             for display in saved { knownNames[display.id] = display.name }
         }
         refresh()
+        // Monitors coming and going change what the menu offers, and a scaled
+        // display that is unplugged must release its virtual screen.
+        CGDisplayRegisterReconfigurationCallback({ _, flags, userInfo in
+            guard !flags.contains(.beginConfigurationFlag), let userInfo else { return }
+            let manager = Unmanaged<DisplayManager>.fromOpaque(userInfo).takeUnretainedValue()
+            Task { @MainActor in manager.refresh() }
+        }, Unmanaged.passUnretained(self).toOpaque())
     }
 
     public func scaling(of id: CGDirectDisplayID) -> ScalingState {
