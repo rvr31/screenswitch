@@ -22,6 +22,10 @@ jobs:
           persist-credentials: false
       - name: Test
         run: swift test
+      - name: Verify app bundle icon
+        run: |
+          ./build-app.sh
+          python3 scripts/verify-app-icon.py
       - name: Check incomplete CLI arguments
         run: |
           python3 - <<'PY'
