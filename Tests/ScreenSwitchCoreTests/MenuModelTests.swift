@@ -22,7 +22,7 @@ private func entries(
     MenuModel.entries(
         displays: displays, virtualSizes: virtual, turnedOff: off,
         profiles: profiles.map { Profile(name: $0, targets: [dell.key: .native]) }, activeProfile: active,
-        opensAtLogin: opensAtLogin)
+        opensAtLogin: opensAtLogin, version: "0.1.9")
 }
 
 private func slider(for name: String, in entries: [MenuEntry]) -> (steps: [ResolutionStep], selected: Int)? {
@@ -100,4 +100,12 @@ private func slider(for name: String, in entries: [MenuEntry]) -> (steps: [Resol
     let some = entries([builtin, dell], profiles: ["Desk"])
     #expect(some.contains(save))
     #expect(some.contains(.submenu("Delete Profile", [.item("Desk", action: .deleteProfile("Desk"))])))
+}
+
+@Test func versionAndUpdateCheckSitBetweenProfilesAndOpenAtLogin() throws {
+    let all = entries([builtin])
+    let version = try #require(all.firstIndex(of: .item("ScreenSwitch 0.1.9", action: nil)))
+    #expect(all[version + 1] == .item("Check for Updates…", action: .checkForUpdates))
+    #expect(all.firstIndex(of: .item("Save Current Setup as Profile…", action: .saveProfile))! < version)
+    #expect(version < all.firstIndex(of: .item("Open at Login", action: .toggleOpenAtLogin))!)
 }

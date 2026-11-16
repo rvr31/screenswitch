@@ -10,6 +10,7 @@ public enum MenuAction: Equatable, Sendable {
     case saveProfile
     case deleteProfile(String)
     case toggleOpenAtLogin
+    case checkForUpdates
     case quit
 }
 
@@ -43,7 +44,8 @@ public enum MenuModel {
         turnedOff: [RememberedOff],
         profiles: [Profile],
         activeProfile: String?,
-        opensAtLogin: Bool
+        opensAtLogin: Bool,
+        version: String
     ) -> [MenuEntry] {
         var entries: [MenuEntry] = []
         for display in displays {
@@ -69,6 +71,9 @@ public enum MenuModel {
         }
         entries += [
             .separator,
+            .item("ScreenSwitch \(version)", action: nil),
+            .item("Check for Updates…", action: .checkForUpdates),
+            .separator,
             .item("Open at Login", action: .toggleOpenAtLogin, checked: opensAtLogin),
             .item("Quit ScreenSwitch", action: .quit),
         ]
@@ -83,6 +88,7 @@ public enum MenuModel {
             turnedOff: profiles.displays.turnedOff,
             profiles: profiles.profiles,
             activeProfile: profiles.active?.name,
-            opensAtLogin: opensAtLogin)
+            opensAtLogin: opensAtLogin,
+            version: AppVersion.current)
     }
 }

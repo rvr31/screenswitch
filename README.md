@@ -18,6 +18,7 @@ macOS has no switch for a connected display. You unplug it or close the lid. And
 - **Pick any scaled size.** Each display gets a slider from the largest text to the most space, in eight HiDPI steps between half the panel width and the full panel width. Native is one of the stops. Drag to see the size, release to apply.
 - **Switch between profiles.** Save the current setup under a name and return to it with one click. ScreenSwitch also switches on its own when you connect or unplug a display.
 - **Open at Login.** One menu item registers ScreenSwitch as a login item.
+- **See the version and check for updates.** The menu shows the running version. "Check for Updates…" asks GitHub for the latest release and opens its download page when yours is older.
 
 ## Install
 
@@ -31,7 +32,7 @@ Choose "Open at Login" from the copy in `/Applications`. The login item points a
 
 ### Updates
 
-Download a newer version from the [latest release](https://github.com/rvr31/screenswitch/releases/latest). Quit ScreenSwitch, replace the copy in `/Applications`, and open it again. The app does not include an automatic updater.
+Download a newer version from the [latest release](https://github.com/rvr31/screenswitch/releases/latest). Quit ScreenSwitch, replace the copy in `/Applications`, and open it again. The app never checks on its own. Choose "Check for Updates…" in the menu to compare your version with the latest release.
 
 ## Profiles
 
