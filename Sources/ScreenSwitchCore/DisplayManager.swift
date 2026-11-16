@@ -141,6 +141,20 @@ public final class DisplayManager {
         if online.isEmpty, let failure { throw failure }
     }
 
+    /// Turns on every built-in display turned off here and returns the ones it
+    /// turned on. Runs before sleep and shutdown: an external display unplugged
+    /// meanwhile would leave the Mac with no enabled display (see `SleepHold`).
+    public func turnOnBuiltin() -> [CGDirectDisplayID] {
+        turnedOff.filter { CGDisplayIsBuiltin($0.id) != 0 }.compactMap { remembered in
+            do {
+                try turnOn(remembered.id)
+                return remembered.id
+            } catch {
+                return nil
+            }
+        }
+    }
+
     /// Mirrors the display onto a virtual HiDPI display at `size`, so the GPU
     /// renders a 2x framebuffer at that size and scales it onto the panel, which
     /// keeps its own native signal.
