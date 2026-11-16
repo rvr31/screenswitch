@@ -149,10 +149,41 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             case .saveProfile: saveProfile()
             case .deleteProfile(let name): profiles.delete(name: name)
             case .toggleOpenAtLogin: break
+            case .checkForUpdates: checkForUpdates()
             case .quit: NSApp.terminate(nil)
             }
         } catch {
             showFailure(title, error.description)
+        }
+    }
+
+    private func checkForUpdates() {
+        Task { @MainActor in
+            let alert = NSAlert()
+            var downloadPage: URL?
+            do throws(UpdateError) {
+                let latest = try await UpdateCheck.latest()
+                let running = ReleaseVersion(AppVersion.current)
+                if let running, latest <= running {
+                    alert.messageText = "ScreenSwitch is up to date"
+                    alert.informativeText = "You have version \(running), the latest release."
+                    alert.addButton(withTitle: "OK")
+                } else {
+                    alert.messageText = "ScreenSwitch \(latest) is available"
+                    alert.informativeText = "You have version \(AppVersion.current). Download the new version, quit ScreenSwitch, and replace the copy in /Applications."
+                    downloadPage = latest.releasePage
+                    alert.addButton(withTitle: "Open Download Page")
+                    alert.addButton(withTitle: "Later")
+                }
+            } catch {
+                alert.messageText = "Checking for updates failed"
+                alert.informativeText = error.description
+                alert.addButton(withTitle: "OK")
+            }
+            NSApp.activate()
+            if alert.runModal() == .alertFirstButtonReturn, let downloadPage {
+                NSWorkspace.shared.open(downloadPage)
+            }
         }
     }
 
