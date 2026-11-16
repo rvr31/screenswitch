@@ -9,6 +9,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
     private var terminationSignal: DispatchSourceSignal?
     private var pending: (MenuAction, String)?
+    private var sleepHold = SleepHold()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         statusItem.button?.image = NSImage(systemSymbolName: "display.2", accessibilityDescription: "ScreenSwitch")
@@ -25,8 +26,47 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         terminationSignal = source
 
         profiles.onError = { [weak self] title, error in self?.showFailure(title, error.description) }
-        manager.onReconfigure = { [weak self] in self?.profiles.reconcile() }
+        manager.onReconfigure = { [weak self] in
+            self?.profiles.reconcile()
+            self?.turnOffHeldAfterWake()
+        }
         profiles.reconcile()
+        observePower()
+    }
+
+    /// Sleep and shutdown start with the built-in display on, so unplugging the
+    /// external display meanwhile cannot leave the Mac without a screen.
+    private func observePower() {
+        let center = NSWorkspace.shared.notificationCenter
+        center.addObserver(forName: NSWorkspace.willSleepNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.willSleep() }
+        }
+        center.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.didWake() }
+        }
+        center.addObserver(forName: NSWorkspace.willPowerOffNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { _ = self?.manager.turnOnBuiltin() }
+        }
+    }
+
+    private func willSleep() {
+        sleepHold.sleep(holding: manager.turnOnBuiltin())
+    }
+
+    private func didWake() {
+        sleepHold.wake(at: Date())
+        manager.refresh()
+        turnOffHeldAfterWake()
+    }
+
+    private func turnOffHeldAfterWake() {
+        for id in sleepHold.due(online: manager.online.map(\.id), now: Date()) {
+            do throws(DisplayError) {
+                try manager.turnOff(id)
+            } catch {
+                showFailure("Turning \(manager.display(id)?.name ?? "the built-in display") off after wake", error.description)
+            }
+        }
     }
 
     func applicationWillTerminate(_ notification: Notification) {

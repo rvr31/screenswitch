@@ -14,7 +14,7 @@ macOS has no switch for a connected display. You unplug it or close the lid. And
 
 ## What it does
 
-- **Switch a display off and on.** The display stays connected and keeps its place in the arrangement. A display that is off stays in the menu, also after a restart, so you can switch it back on.
+- **Switch a display off and on.** The display stays connected and keeps its place in the arrangement. A display that is off stays in the menu, so you can switch it back on. The built-in display comes back on for sleep and shutdown.
 - **Pick any scaled size.** Each display gets a slider from the largest text to the most space, in eight HiDPI steps between half the panel width and the full panel width. Native is one of the stops. Drag to see the size, release to apply.
 - **Switch between profiles.** Save the current setup under a name and return to it with one click. ScreenSwitch also switches on its own when you connect or unplug a display.
 - **Open at Login.** One menu item registers ScreenSwitch as a login item.
@@ -42,6 +42,8 @@ ScreenSwitch also switches on its own, at launch and whenever the set of connect
 A display that ScreenSwitch turned off counts as connected until you turn it on again. macOS hides a disabled display, so ScreenSwitch cannot tell when you unplug it.
 
 When no display is on, ScreenSwitch turns the displays it switched off back on, built-in first. This covers unplugging the only active display while the built-in one is off, with or without profiles.
+
+Before the Mac sleeps or shuts down, ScreenSwitch turns the built-in display back on. Otherwise unplugging the external display during sleep leaves a Mac that wakes with no screen at all. After wake, the built-in display goes off again as soon as another display is back, within a minute. After a restart, a profile turns it off again at launch.
 
 ## Command line
 
