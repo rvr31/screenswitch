@@ -36,7 +36,12 @@ public struct DisplayKey: Hashable, Codable, Sendable, Comparable, CustomStringC
 
     static let virtualVendor: UInt32 = 0x5353
 
-    var isPhysical: Bool { vendor != Self.virtualVendor }
+    /// False for ScreenSwitch's own virtual displays and for the placeholder
+    /// ("unkn", "virt") that macOS 27 turns on when the last display goes away,
+    /// as when the external display is unplugged with the built-in one off.
+    var isPhysical: Bool {
+        vendor != Self.virtualVendor && !(vendor == 0x756e_6b6e && model == 0x7669_7274)
+    }
 }
 
 public struct PhysicalDisplay: Equatable, Sendable {
