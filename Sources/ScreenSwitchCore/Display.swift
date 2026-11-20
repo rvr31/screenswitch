@@ -33,6 +33,10 @@ public struct DisplayKey: Hashable, Codable, Sendable, Comparable, CustomStringC
     }
 
     public var description: String { String(format: "%04x:%04x:%08x", vendor, model, serial) }
+
+    static let virtualVendor: UInt32 = 0x5353
+
+    var isPhysical: Bool { vendor != Self.virtualVendor }
 }
 
 public struct PhysicalDisplay: Equatable, Sendable {

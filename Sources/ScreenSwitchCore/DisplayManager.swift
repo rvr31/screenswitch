@@ -55,7 +55,6 @@ public final class DisplayManager {
     public let defaults: UserDefaults
     private static let defaultsDomain = "nl.vanraan.screenswitch"
     private static let turnedOffKey = "turnedOff"
-    private static let virtualVendorID: UInt32 = 0x5353
 
     public init() {
         // The app and the CLI share one defaults domain. Inside the app bundle
@@ -88,7 +87,7 @@ public final class DisplayManager {
         knownNames.merge(Self.screenNames()) { _, new in new }
         let previous = Dictionary(online.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
         online = Self.onlineDisplayIDs()
-            .filter { CGDisplayVendorNumber($0) != Self.virtualVendorID }
+            .filter { DisplayKey($0).isPhysical }
             .compactMap { id in
                 // A mirrored display's mode may report the virtual screen, so keep
                 // what it looked like before it was scaled.
@@ -266,7 +265,7 @@ public final class DisplayManager {
         let descriptor = CGVirtualDisplayDescriptor()
         descriptor.name = "\(display.name) (scaled)"
         descriptor.queue = .main
-        descriptor.vendorID = virtualVendorID
+        descriptor.vendorID = DisplayKey.virtualVendor
         descriptor.productID = 0x5357
         // Per physical display, so macOS keeps arrangement settings for each apart.
         descriptor.serialNum = display.id

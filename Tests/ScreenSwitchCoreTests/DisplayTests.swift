@@ -38,3 +38,12 @@ private func display(_ width: Int, _ height: Int, pixels: (Int, Int)) -> Physica
     let decoded = try JSONDecoder().decode([RememberedOff].self, from: saved)
     #expect(decoded == [RememberedOff(id: 1, name: "Built-in Retina Display", key: DisplayKey(1))])
 }
+
+@Test func onlyRealDisplaysArePhysical() {
+    // Read from the Dell and the built-in panel, from ScreenSwitch's own virtual
+    // display, and from the placeholder macOS 27 turns on when the last display goes.
+    #expect(DisplayKey(vendor: 0x10ac, model: 0x439e, serial: 808_464_972).isPhysical)
+    #expect(DisplayKey(vendor: 0x0610, model: 0xa05c, serial: 4_251_086_178).isPhysical)
+    #expect(!DisplayKey(vendor: 0x5353, model: 0x5357, serial: 5).isPhysical)
+    #expect(!DisplayKey(vendor: 0x756e_6b6e, model: 0x7669_7274, serial: 0).isPhysical)
+}
